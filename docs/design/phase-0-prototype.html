@@ -1,0 +1,2374 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Phase 0 interactive design concept for Vendor's Market."
+    />
+    <title>Vendor's Market — Phase 0 Design Concept</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #17231e;
+        --muted: #65756d;
+        --line: #e5ebe6;
+        --surface: #ffffff;
+        --canvas: #f5f7f4;
+        --green: #176b4a;
+        --green-dark: #10563a;
+        --green-soft: #e8f4ec;
+        --orange: #e99443;
+        --orange-soft: #fff3e5;
+        --red: #b53f35;
+        --shadow: 0 16px 40px rgb(23 35 30 / 8%);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-width: 0;
+        margin: 0;
+        color: var(--ink);
+        background: var(--canvas);
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .prototype-note {
+        padding: 9px 20px;
+        color: #47311b;
+        background: #fff0d9;
+        text-align: center;
+        font-size: 13px;
+      }
+
+      .prototype-note strong {
+        color: #7a4819;
+      }
+
+      .topbar {
+        display: flex;
+        min-height: 76px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        padding: 0 clamp(20px, 6vw, 88px);
+        background: var(--surface);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--ink);
+        text-decoration: none;
+        font-size: 19px;
+        font-weight: 780;
+        letter-spacing: -0.5px;
+        white-space: nowrap;
+      }
+
+      .brand-mark {
+        display: grid;
+        width: 36px;
+        height: 36px;
+        place-items: center;
+        color: white;
+        background: var(--green);
+        border-radius: 12px;
+        font-size: 19px;
+      }
+
+      .role-tabs {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 5px;
+        background: #f1f4f1;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+      }
+
+      .role-tab {
+        padding: 10px 15px;
+        color: var(--muted);
+        background: transparent;
+        border: 0;
+        border-radius: 10px;
+        font-size: 13px;
+        font-weight: 650;
+      }
+
+      .role-tab[aria-pressed="true"] {
+        color: var(--green-dark);
+        background: white;
+        box-shadow: 0 2px 6px rgb(23 35 30 / 9%);
+      }
+
+      .account {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .avatar {
+        display: grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        color: var(--green-dark);
+        background: var(--green-soft);
+        border-radius: 50%;
+        font-weight: 750;
+      }
+
+      main {
+        width: min(1200px, calc(100% - 40px));
+        margin: 38px auto 72px;
+      }
+
+      .page-heading {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 20px;
+        margin-bottom: 25px;
+      }
+
+      .eyebrow {
+        margin: 0 0 9px;
+        color: var(--green);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 1.6px;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        margin-bottom: 7px;
+        font-size: clamp(29px, 4vw, 42px);
+        letter-spacing: -1.6px;
+      }
+
+      .subtitle {
+        margin-bottom: 0;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+
+      .button {
+        display: inline-flex;
+        min-height: 42px;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 0 16px;
+        color: white;
+        background: var(--green);
+        border: 1px solid var(--green);
+        border-radius: 11px;
+        text-decoration: none;
+        font-size: 13px;
+        font-weight: 720;
+        transition:
+          background 120ms ease,
+          transform 120ms ease;
+      }
+
+      .button:hover {
+        background: var(--green-dark);
+        transform: translateY(-1px);
+      }
+
+      .button.secondary {
+        color: var(--ink);
+        background: white;
+        border-color: var(--line);
+      }
+
+      .button.secondary:hover {
+        background: #f7f9f7;
+      }
+
+      .button.small {
+        min-height: 34px;
+        padding: 0 11px;
+        font-size: 12px;
+      }
+
+      .search-bar {
+        display: flex;
+        min-height: 58px;
+        align-items: center;
+        gap: 12px;
+        padding: 0 17px;
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 15px;
+        box-shadow: 0 4px 14px rgb(23 35 30 / 3%);
+      }
+
+      .search-icon {
+        color: var(--green);
+        font-size: 20px;
+      }
+
+      .search-bar input {
+        width: 100%;
+        color: var(--ink);
+        background: transparent;
+        border: 0;
+        outline: 0;
+        font-size: 14px;
+      }
+
+      .search-bar input::placeholder {
+        color: #86938c;
+      }
+
+      .location-pill,
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 10px;
+        color: var(--green-dark);
+        background: var(--green-soft);
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 720;
+        white-space: nowrap;
+      }
+
+      .badge.orange {
+        color: #854e19;
+        background: var(--orange-soft);
+      }
+
+      .badge.gray {
+        color: #59665f;
+        background: #eef1ee;
+      }
+
+      .hero {
+        display: grid;
+        min-height: 280px;
+        grid-template-columns: 1.15fr 0.85fr;
+        align-items: center;
+        overflow: hidden;
+        margin-top: 25px;
+        padding: 35px 48px;
+        background:
+          radial-gradient(ellipse at 87% 14%, rgb(249 214 159 / 65%), transparent 34%),
+          linear-gradient(115deg, #eaf5e9, #f8f2e7);
+        border-radius: 22px;
+      }
+
+      .hero h2 {
+        max-width: 500px;
+        margin-bottom: 13px;
+        font-size: clamp(28px, 4vw, 43px);
+        letter-spacing: -1.7px;
+        line-height: 1.1;
+      }
+
+      .hero p {
+        max-width: 430px;
+        color: #53645a;
+        line-height: 1.65;
+      }
+
+      .hero-art {
+        display: flex;
+        min-height: 180px;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        font-size: 73px;
+        filter: drop-shadow(0 14px 12px rgb(74 74 40 / 15%));
+        transform: rotate(-4deg);
+      }
+
+      .section-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin: 34px 0 17px;
+      }
+
+      .section-heading h2 {
+        margin: 0;
+        font-size: 20px;
+        letter-spacing: -0.5px;
+      }
+
+      .text-link {
+        color: var(--green);
+        font-size: 13px;
+        font-weight: 720;
+        text-decoration: none;
+      }
+
+      .category-row {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .category {
+        display: flex;
+        min-height: 88px;
+        align-items: center;
+        gap: 12px;
+        padding: 14px;
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        font-size: 13px;
+        font-weight: 680;
+      }
+
+      .category-icon {
+        display: grid;
+        width: 40px;
+        height: 40px;
+        flex: 0 0 auto;
+        place-items: center;
+        background: #f4f6ed;
+        border-radius: 12px;
+        font-size: 20px;
+      }
+
+      .product-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .product-card {
+        overflow: hidden;
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        transition:
+          box-shadow 150ms ease,
+          transform 150ms ease;
+      }
+
+      .product-card:hover {
+        box-shadow: var(--shadow);
+        transform: translateY(-3px);
+      }
+
+      .product-image {
+        display: grid;
+        min-height: 160px;
+        place-items: center;
+        background: linear-gradient(145deg, #f6f0e2, #e9eee5);
+        font-size: 62px;
+      }
+
+      .product-image.alt-1 {
+        background: linear-gradient(145deg, #f3eadc, #e6efe7);
+      }
+
+      .product-image.alt-2 {
+        background: linear-gradient(145deg, #f7eee3, #e9e9dc);
+      }
+
+      .product-image.alt-3 {
+        background: linear-gradient(145deg, #e9f1e7, #f5ecd9);
+      }
+
+      .product-info {
+        padding: 15px;
+      }
+
+      .product-info h3 {
+        margin: 0 0 5px;
+        font-size: 14px;
+      }
+
+      .product-shop {
+        margin: 0 0 12px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .product-bottom {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .price {
+        font-size: 16px;
+        font-weight: 800;
+      }
+
+      .stock {
+        margin-top: 5px;
+        color: var(--green);
+        font-size: 11px;
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: 220px minmax(0, 1fr);
+        gap: 20px;
+        align-items: start;
+      }
+
+      .sidebar,
+      .panel,
+      .stat-card {
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+      }
+
+      .sidebar {
+        padding: 13px;
+      }
+
+      .sidebar-shop {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px;
+        margin-bottom: 13px;
+        background: #f6f8f5;
+        border-radius: 12px;
+      }
+
+      .shop-logo {
+        display: grid;
+        width: 38px;
+        height: 38px;
+        flex: 0 0 auto;
+        place-items: center;
+        color: #805221;
+        background: #f9e9cb;
+        border-radius: 11px;
+        font-size: 18px;
+      }
+
+      .sidebar-shop strong,
+      .sidebar-shop small {
+        display: block;
+      }
+
+      .sidebar-shop strong {
+        font-size: 12px;
+      }
+
+      .sidebar-shop small {
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .side-link {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 11px 10px;
+        color: #58675f;
+        border-radius: 10px;
+        font-size: 13px;
+        font-weight: 620;
+      }
+
+      .side-link.active {
+        color: var(--green-dark);
+        background: var(--green-soft);
+        font-weight: 750;
+      }
+
+      .workspace-content {
+        min-width: 0;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 13px;
+        margin-bottom: 18px;
+      }
+
+      .stat-card {
+        padding: 18px;
+      }
+
+      .stat-label {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .stat-value {
+        margin: 9px 0 5px;
+        font-size: 25px;
+        font-weight: 790;
+        letter-spacing: -0.8px;
+      }
+
+      .stat-change {
+        color: var(--green);
+        font-size: 11px;
+      }
+
+      .panel {
+        overflow: hidden;
+      }
+
+      .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 19px 20px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .panel-header h2 {
+        margin: 0;
+        font-size: 16px;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+        white-space: nowrap;
+      }
+
+      th,
+      td {
+        padding: 14px 18px;
+        border-bottom: 1px solid #edf0ed;
+        font-size: 12px;
+      }
+
+      th {
+        color: #758179;
+        background: #fafbfa;
+        font-size: 10px;
+        font-weight: 780;
+        letter-spacing: 0.7px;
+        text-transform: uppercase;
+      }
+
+      tr:last-child td {
+        border-bottom: 0;
+      }
+
+      td strong {
+        font-size: 12px;
+      }
+
+      .customer-cell {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+
+      .mini-avatar {
+        display: grid;
+        width: 30px;
+        height: 30px;
+        flex: 0 0 auto;
+        place-items: center;
+        color: #5b5236;
+        background: #f4eedc;
+        border-radius: 50%;
+        font-size: 10px;
+        font-weight: 750;
+      }
+
+      .review-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 285px;
+        gap: 18px;
+      }
+
+      .admin-overview {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 13px;
+        margin: -4px 0 18px;
+      }
+
+      .admin-overview .stat-card {
+        padding: 15px 18px;
+      }
+
+      .admin-overview .stat-value {
+        margin: 7px 0 4px;
+        font-size: 22px;
+      }
+
+      .review-fields select {
+        width: 100%;
+        min-height: 39px;
+        padding: 0 11px;
+        color: var(--ink);
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        font-size: 12px;
+      }
+
+      .review-status {
+        grid-column: 1 / -1;
+        margin: 0;
+        color: var(--green-dark);
+        font-size: 11px;
+        line-height: 1.5;
+      }
+
+      .review-summary {
+        padding: 19px 20px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .review-summary p {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.55;
+      }
+
+      .review-fields {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 13px;
+        padding: 17px 20px 21px;
+      }
+
+      .review-field {
+        display: grid;
+        gap: 6px;
+        color: #536159;
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .review-field input {
+        width: 100%;
+        min-height: 39px;
+        padding: 0 11px;
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        font-size: 12px;
+      }
+
+      .review-field.wide {
+        grid-column: 1 / -1;
+      }
+
+      .review-fields .wide {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .review-aside {
+        padding: 18px;
+        background: #eff5ed;
+        border: 1px solid #dfe9dd;
+        border-radius: 16px;
+      }
+
+      .review-aside h3 {
+        margin-bottom: 13px;
+        font-size: 14px;
+      }
+
+      .check-row {
+        display: flex;
+        gap: 9px;
+        margin: 12px 0;
+        color: #536159;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .check {
+        color: var(--green);
+        font-weight: 900;
+      }
+
+      .footer-note {
+        padding: 24px 12px 0;
+        color: #849087;
+        text-align: center;
+        font-size: 11px;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
+      :focus-visible {
+        outline: 3px solid #7ab894;
+        outline-offset: 3px;
+      }
+
+      @media (max-width: 900px) {
+        .category-row {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .product-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .review-layout {
+          grid-template-columns: 1fr;
+        }
+
+        .admin-overview {
+          gap: 9px;
+        }
+
+        .workspace {
+          grid-template-columns: 190px minmax(0, 1fr);
+        }
+
+        .topbar {
+          flex-wrap: wrap;
+          justify-content: center;
+          padding: 14px 20px;
+        }
+
+        .brand {
+          margin-right: auto;
+        }
+
+        .account {
+          display: none;
+        }
+      }
+
+      @media (max-width: 640px) {
+        main {
+          width: min(100% - 28px, 520px);
+          margin-top: 25px;
+        }
+
+        .topbar {
+          gap: 12px;
+        }
+
+        .brand {
+          width: 100%;
+          justify-content: center;
+          margin: 0;
+        }
+
+        .role-tabs {
+          width: 100%;
+          justify-content: center;
+        }
+
+        .role-tab {
+          flex: 1;
+          padding: 10px 7px;
+        }
+
+        .page-heading {
+          align-items: start;
+          flex-direction: column;
+        }
+
+        .hero {
+          grid-template-columns: 1fr;
+          padding: 28px;
+        }
+
+        .hero-art {
+          min-height: 110px;
+          font-size: 57px;
+        }
+
+        .category-row {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .product-grid {
+          gap: 10px;
+        }
+
+        .product-image {
+          min-height: 120px;
+          font-size: 48px;
+        }
+
+        .product-info {
+          padding: 12px;
+        }
+
+        .product-bottom {
+          align-items: start;
+          flex-direction: column;
+        }
+
+        .workspace {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          display: flex;
+          overflow-x: auto;
+          gap: 5px;
+          padding: 8px;
+        }
+
+        .sidebar-shop {
+          min-width: 155px;
+          margin: 0 5px 0 0;
+        }
+
+        .side-link {
+          min-width: max-content;
+          padding: 10px;
+        }
+
+        .stats {
+          grid-template-columns: 1fr;
+        }
+
+        .admin-overview {
+          grid-template-columns: 1fr;
+        }
+
+        .stat-card {
+          padding: 14px 16px;
+        }
+
+        .stat-value {
+          margin: 5px 0;
+        }
+
+        .review-fields {
+          grid-template-columns: 1fr;
+        }
+
+        .review-field.wide {
+          grid-column: auto;
+        }
+
+        .review-fields .wide {
+          align-items: stretch;
+          flex-direction: column;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+
+      :root {
+        --ink: #1d2b24;
+        --muted: #718078;
+        --line: #e8ece6;
+        --canvas: #fbfaf6;
+        --green: #245c43;
+        --green-dark: #193f2e;
+        --green-soft: #edf3e9;
+        --orange: #d78a42;
+        --orange-soft: #fbf0df;
+        --shadow: 0 18px 48px rgb(34 49 39 / 10%);
+      }
+
+      body {
+        background: #fbfaf6;
+      }
+
+      .prototype-note {
+        padding: 8px 18px;
+        color: #53614d;
+        background: #eef1e6;
+        font-size: 11px;
+        letter-spacing: 0.15px;
+      }
+
+      .prototype-note strong {
+        color: #314d39;
+      }
+
+      .topbar {
+        position: sticky;
+        z-index: 5;
+        top: 0;
+        min-height: 74px;
+        padding: 0 max(24px, calc((100% - 1280px) / 2));
+        box-shadow: 0 1px 0 rgb(35 48 39 / 5%);
+      }
+
+      .brand {
+        font-size: 17px;
+        letter-spacing: -0.65px;
+      }
+
+      .brand-mark {
+        width: 38px;
+        height: 38px;
+        border-radius: 13px;
+      }
+
+      .role-tabs {
+        padding: 4px;
+        background: #f5f6f2;
+        border-color: #edf0e9;
+        border-radius: 999px;
+      }
+
+      .role-tab {
+        padding: 9px 14px;
+        font-size: 12px;
+      }
+
+      .role-tab[aria-pressed="true"] {
+        color: var(--green-dark);
+        box-shadow: 0 2px 6px rgb(23 35 30 / 7%);
+      }
+
+      .account {
+        gap: 12px;
+      }
+
+      .preview-label {
+        color: #8b948b;
+        font-size: 11px;
+      }
+
+      .cart-button {
+        display: inline-flex;
+        min-height: 40px;
+        align-items: center;
+        gap: 8px;
+        padding: 0 12px;
+        color: var(--ink);
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 720;
+      }
+
+      .cart-count {
+        display: grid;
+        width: 21px;
+        height: 21px;
+        place-items: center;
+        color: white;
+        background: var(--green);
+        border-radius: 50%;
+        font-size: 10px;
+      }
+
+      main {
+        width: min(1280px, calc(100% - 56px));
+        margin: 0 auto 72px;
+      }
+
+      #customer {
+        padding-top: 24px;
+      }
+
+      .market-tools {
+        display: flex;
+        min-height: 50px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: 24px;
+      }
+
+      .market-links {
+        display: flex;
+        align-items: center;
+        gap: 26px;
+      }
+
+      .market-links a {
+        color: #536158;
+        font-size: 12px;
+        font-weight: 650;
+        text-decoration: none;
+      }
+
+      .market-links a:first-child,
+      .market-links a:hover {
+        color: var(--green);
+      }
+
+      .market-location {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding-left: 18px;
+        border-left: 1px solid var(--line);
+      }
+
+      .location-icon {
+        display: grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        color: var(--green);
+        background: #eef2e8;
+        border-radius: 11px;
+        font-size: 16px;
+      }
+
+      .market-location small,
+      .market-location strong {
+        display: block;
+      }
+
+      .market-location small {
+        margin-bottom: 2px;
+        color: #89938b;
+        font-size: 9px;
+      }
+
+      .market-location strong {
+        font-size: 11px;
+      }
+
+      .market-search {
+        display: flex;
+        max-width: 760px;
+        min-height: 48px;
+        gap: 12px;
+        padding: 0 14px;
+        border-radius: 13px;
+        box-shadow: none;
+      }
+
+      .market-search input {
+        font-size: 12px;
+      }
+
+      .search-shortcut {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        color: #9ba39c;
+        font-size: 10px;
+        white-space: nowrap;
+      }
+
+      .search-shortcut kbd {
+        padding: 3px 6px;
+        background: #f5f6f3;
+        border: 1px solid #e8ebe6;
+        border-radius: 5px;
+        font: inherit;
+      }
+
+      .market-hero {
+        position: relative;
+        display: grid;
+        min-width: 0;
+        min-height: 396px;
+        grid-template-columns: 1.08fr 0.92fr;
+        align-items: center;
+        overflow: hidden;
+        padding: 48px 6.2%;
+        background:
+          radial-gradient(ellipse at 74% 22%, rgb(250 229 183 / 80%), transparent 29%),
+          linear-gradient(111deg, #eff2e7 0%, #f5eedf 100%);
+        border: 1px solid #eeece1;
+        border-radius: 25px;
+      }
+
+      .market-hero::before,
+      .market-hero::after {
+        position: absolute;
+        content: "";
+        pointer-events: none;
+      }
+
+      .market-hero::before {
+        top: -150px;
+        right: 12%;
+        width: 370px;
+        height: 370px;
+        border: 1px solid rgb(73 91 61 / 9%);
+        border-radius: 50%;
+      }
+
+      .market-hero::after {
+        right: -110px;
+        bottom: -240px;
+        width: 500px;
+        height: 500px;
+        background: rgb(255 255 255 / 27%);
+        border-radius: 50%;
+      }
+
+      .hero-copy {
+        position: relative;
+        z-index: 1;
+        min-width: 0;
+        max-width: 520px;
+      }
+
+      .hero-kicker {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        margin: 0 0 18px;
+        color: #4a694d;
+        font-size: 10px;
+        font-weight: 780;
+        letter-spacing: 1.15px;
+        text-transform: uppercase;
+      }
+
+      .hero-kicker::before {
+        width: 7px;
+        height: 7px;
+        background: #7e9a65;
+        border-radius: 50%;
+        content: "";
+      }
+
+      .market-hero h1 {
+        max-width: 480px;
+        margin: 0 0 16px;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: clamp(42px, 5.2vw, 65px);
+        font-weight: 500;
+        letter-spacing: -2.7px;
+        line-height: 0.99;
+      }
+
+      .market-hero h1 em {
+        color: var(--green);
+        font-weight: 500;
+      }
+
+      .hero-description {
+        max-width: 400px;
+        margin-bottom: 23px;
+        color: #667467;
+        font-size: 13px;
+        line-height: 1.75;
+      }
+
+      .hero-actions {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+      }
+
+      .hero-actions .button {
+        min-height: 46px;
+        padding: 0 18px;
+        border-radius: 12px;
+        font-size: 12px;
+      }
+
+      .hero-secondary {
+        color: #596959;
+        font-size: 11px;
+        font-weight: 700;
+        text-decoration: none;
+      }
+
+      .hero-visual {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        min-width: 0;
+        min-height: 300px;
+        place-items: center;
+      }
+
+      .hero-orbit {
+        position: absolute;
+        width: min(340px, 87%);
+        aspect-ratio: 1;
+        background:
+          radial-gradient(circle at 50% 50%, #f7e9c9 0 34%, transparent 34.5%),
+          radial-gradient(circle at 50% 50%, transparent 0 50%, rgb(255 255 255 / 62%) 50.5% 51%, transparent 51.5%);
+        border-radius: 50%;
+      }
+
+      .hero-collection {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        width: min(330px, 88%);
+        height: 290px;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .produce-bowl {
+        position: relative;
+        display: grid;
+        width: 205px;
+        height: 205px;
+        place-items: center;
+        background:
+          radial-gradient(circle at 32% 30%, #f5ac51 0 13%, transparent 13.5%),
+          radial-gradient(circle at 61% 27%, #7a9a57 0 15%, transparent 15.5%),
+          radial-gradient(circle at 49% 52%, #d86f46 0 16%, transparent 16.5%),
+          radial-gradient(circle at 32% 67%, #e1ae48 0 14%, transparent 14.5%),
+          radial-gradient(circle at 71% 64%, #8b9b4e 0 15%, transparent 15.5%),
+          radial-gradient(ellipse at 50% 54%, #f3ead2 0 48%, #c6a677 49% 52%, transparent 53%);
+        border-radius: 50%;
+        filter: drop-shadow(0 22px 18px rgb(78 68 42 / 16%));
+        transform: rotate(-8deg);
+      }
+
+      .produce-bowl span {
+        margin-top: 43px;
+        color: #6b573c;
+        font-size: 9px;
+        font-weight: 850;
+        letter-spacing: 2.4px;
+        text-transform: uppercase;
+      }
+
+      .float-card {
+        position: absolute;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 10px 12px;
+        background: rgb(255 255 255 / 92%);
+        border: 1px solid rgb(255 255 255 / 80%);
+        border-radius: 13px;
+        box-shadow: 0 10px 25px rgb(64 71 52 / 11%);
+        backdrop-filter: blur(8px);
+      }
+
+      .float-card.fresh {
+        top: 25px;
+        right: 0;
+      }
+
+      .float-card.rating {
+        bottom: 28px;
+        left: 0;
+      }
+
+      .float-emoji {
+        display: grid;
+        width: 31px;
+        height: 31px;
+        place-items: center;
+        background: #f5f0e2;
+        border-radius: 9px;
+        font-size: 16px;
+      }
+
+      .float-card small,
+      .float-card strong {
+        display: block;
+        white-space: nowrap;
+      }
+
+      .float-card small {
+        margin-bottom: 3px;
+        color: #839087;
+        font-size: 9px;
+      }
+
+      .float-card strong {
+        font-size: 10px;
+      }
+
+      .trust-strip {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 15px;
+        padding: 19px 28px;
+        margin: 20px 0 34px;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 15px;
+      }
+
+      .trust-item {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        color: #5d6b60;
+        font-size: 10px;
+        line-height: 1.4;
+      }
+
+      .trust-item + .trust-item {
+        border-left: 1px solid var(--line);
+      }
+
+      .trust-icon {
+        display: grid;
+        width: 31px;
+        height: 31px;
+        flex: 0 0 auto;
+        place-items: center;
+        color: #456b4e;
+        background: #f0f3e9;
+        border-radius: 10px;
+        font-size: 14px;
+      }
+
+      .trust-item strong {
+        display: block;
+        margin-bottom: 2px;
+        color: var(--ink);
+        font-size: 10px;
+      }
+
+      .market-section {
+        margin-top: 34px;
+      }
+
+      .market-section-heading {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 15px;
+      }
+
+      .market-section-heading h2 {
+        margin: 0;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 25px;
+        font-weight: 500;
+        letter-spacing: -0.5px;
+      }
+
+      .market-section-heading p {
+        margin: 6px 0 0;
+        color: #7e8980;
+        font-size: 11px;
+      }
+
+      .category-row {
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .category {
+        min-height: 70px;
+        padding: 10px;
+        color: var(--ink);
+        border-radius: 13px;
+        cursor: pointer;
+        font-size: 10px;
+        text-align: left;
+        transition:
+          border-color 140ms ease,
+          background 140ms ease,
+          transform 140ms ease;
+      }
+
+      .category:hover,
+      .category[aria-pressed="true"] {
+        background: #f2f5ee;
+        border-color: #cdd9c8;
+        transform: translateY(-1px);
+      }
+
+      .category-icon {
+        width: 36px;
+        height: 36px;
+        background: #f4f3e9;
+        border-radius: 11px;
+        font-size: 17px;
+      }
+
+      .market-heading-actions {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+
+      .filter-button,
+      .sort-select {
+        min-height: 35px;
+        padding: 0 11px;
+        color: #5e6b62;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        font-size: 10px;
+      }
+
+      .product-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .product-card {
+        position: relative;
+        border-color: #eceee8;
+        border-radius: 15px;
+        box-shadow: 0 3px 12px rgb(39 49 39 / 2%);
+      }
+
+      .product-image {
+        position: relative;
+        min-height: 205px;
+        overflow: hidden;
+        background:
+          radial-gradient(ellipse at 50% 93%, rgb(218 211 187 / 50%), transparent 32%),
+          linear-gradient(145deg, #f1eee1, #e9eee4);
+        font-size: 74px;
+      }
+
+      .product-image::before,
+      .product-image::after {
+        position: absolute;
+        width: 140px;
+        height: 140px;
+        border: 1px solid rgb(255 255 255 / 52%);
+        border-radius: 50%;
+        content: "";
+      }
+
+      .product-image::before {
+        top: -72px;
+        right: -28px;
+      }
+
+      .product-image::after {
+        bottom: -113px;
+        left: -44px;
+        width: 190px;
+        height: 190px;
+      }
+
+      .product-image > span:first-of-type {
+        position: relative;
+        z-index: 1;
+        filter: drop-shadow(0 10px 7px rgb(53 54 35 / 14%));
+        transform: translateY(3px);
+        transition: transform 180ms ease;
+      }
+
+      .product-card:hover .product-image > span:first-of-type {
+        transform: translateY(-2px) scale(1.05);
+      }
+
+      .product-image.alt-1 {
+        background:
+          radial-gradient(ellipse at 50% 93%, rgb(216 204 181 / 54%), transparent 32%),
+          linear-gradient(145deg, #eee8dd, #e4ece4);
+      }
+
+      .product-image.alt-2 {
+        background:
+          radial-gradient(ellipse at 50% 93%, rgb(216 204 181 / 54%), transparent 32%),
+          linear-gradient(145deg, #f3eadb, #e8e9dc);
+      }
+
+      .product-image.alt-3 {
+        background:
+          radial-gradient(ellipse at 50% 93%, rgb(216 204 181 / 54%), transparent 32%),
+          linear-gradient(145deg, #e9eee2, #f1e8d9);
+      }
+
+      .product-image.alt-4 {
+        background:
+          radial-gradient(ellipse at 50% 93%, rgb(216 204 181 / 54%), transparent 32%),
+          linear-gradient(145deg, #f2e9dc, #e9e9dc);
+      }
+
+      .product-image.alt-5 {
+        background:
+          radial-gradient(ellipse at 50% 93%, rgb(216 204 181 / 54%), transparent 32%),
+          linear-gradient(145deg, #e9eddf, #f3eadc);
+      }
+
+      .product-image.alt-6 {
+        background:
+          radial-gradient(ellipse at 50% 93%, rgb(216 204 181 / 54%), transparent 32%),
+          linear-gradient(145deg, #efe6d9, #e5ece4);
+      }
+
+      .product-image.alt-7 {
+        background:
+          radial-gradient(ellipse at 50% 93%, rgb(216 204 181 / 54%), transparent 32%),
+          linear-gradient(145deg, #e9ede5, #f2e8da);
+      }
+
+      .product-info {
+        padding: 13px 13px 14px;
+      }
+
+      .product-info h3 {
+        margin-bottom: 5px;
+        font-size: 12px;
+        letter-spacing: -0.15px;
+      }
+
+      .product-shop {
+        margin-bottom: 10px;
+        font-size: 10px;
+      }
+
+      .product-bottom {
+        align-items: end;
+      }
+
+      .price {
+        font-size: 15px;
+        letter-spacing: -0.3px;
+      }
+
+      .price small {
+        color: #858f87;
+        font-size: 9px;
+        font-weight: 500;
+      }
+
+      .stock {
+        color: #60755c;
+        font-size: 9px;
+      }
+
+      .stock::first-letter {
+        color: #728c5d;
+      }
+
+      .product-card .button.small {
+        min-height: 31px;
+        padding: 0 9px;
+        border-radius: 9px;
+        font-size: 9px;
+      }
+
+      .favorite-button {
+        position: absolute;
+        z-index: 2;
+        top: 11px;
+        right: 11px;
+        display: grid;
+        width: 31px;
+        height: 31px;
+        place-items: center;
+        color: #46534b;
+        background: rgb(255 255 255 / 89%);
+        border: 1px solid rgb(255 255 255 / 80%);
+        border-radius: 50%;
+        box-shadow: 0 3px 8px rgb(40 48 40 / 8%);
+        font-size: 16px;
+        line-height: 1;
+      }
+
+      .favorite-button[aria-pressed="true"] {
+        color: #b94c43;
+      }
+
+      .product-tag {
+        position: absolute;
+        z-index: 1;
+        top: 12px;
+        left: 12px;
+        padding: 6px 8px;
+        color: #53664a;
+        background: rgb(255 255 255 / 88%);
+        border-radius: 999px;
+        font-size: 8px;
+        font-weight: 780;
+      }
+
+      .shop-callout {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        gap: 20px;
+        padding: 21px 24px;
+        margin-top: 34px;
+        background: #eff2e8;
+        border: 1px solid #e4e9dc;
+        border-radius: 16px;
+      }
+
+      .shop-callout h2 {
+        margin: 0 0 5px;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 20px;
+        font-weight: 500;
+      }
+
+      .shop-callout p {
+        margin: 0;
+        color: #69756a;
+        font-size: 11px;
+      }
+
+      .market-status {
+        min-height: 20px;
+        margin: 13px 2px 0;
+        color: #4e6752;
+        font-size: 10px;
+      }
+
+      .empty-state {
+        grid-column: 1 / -1;
+        padding: 35px 20px;
+        color: #68756c;
+        background: white;
+        border: 1px dashed #dfe5dc;
+        border-radius: 14px;
+        text-align: center;
+        font-size: 12px;
+      }
+
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        clip-path: inset(50%);
+      }
+
+      #customer .footer-note {
+        margin-top: 30px;
+        color: #919990;
+      }
+
+      @media (max-width: 900px) {
+        .topbar {
+          padding: 0 22px;
+        }
+
+        .category-row {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .market-hero {
+          min-height: 350px;
+          padding: 38px 5%;
+        }
+
+        .hero-visual {
+          min-height: 255px;
+        }
+
+        .hero-collection {
+          height: 250px;
+        }
+
+        .produce-bowl {
+          width: 175px;
+          height: 175px;
+        }
+
+        .product-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .product-image {
+          min-height: 190px;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .topbar {
+          position: static;
+          gap: 10px;
+          padding: 11px 12px;
+        }
+
+        .brand {
+          width: auto;
+          min-width: 0;
+          justify-content: flex-start;
+          margin: 0 auto 0 0;
+          font-size: 15px;
+        }
+
+        .brand-mark {
+          width: 34px;
+          height: 34px;
+        }
+
+        .role-tabs {
+          width: 100%;
+          order: 2;
+        }
+
+        .role-tab {
+          flex: 1;
+          padding: 9px 5px;
+          font-size: 10px;
+        }
+
+        .account {
+          display: inline-flex;
+        }
+
+        .preview-label,
+        .account .avatar {
+          display: none;
+        }
+
+        .cart-button {
+          min-height: 36px;
+          padding: 0 8px;
+          font-size: 10px;
+        }
+
+        main {
+          width: min(100% - 28px, 520px);
+          margin-top: 0;
+        }
+
+        #customer {
+          padding-top: 14px;
+        }
+
+        .market-tools {
+          align-items: stretch;
+          flex-direction: column-reverse;
+          gap: 12px;
+          margin-bottom: 15px;
+        }
+
+        .market-links {
+          justify-content: center;
+          gap: 23px;
+        }
+
+        .market-location {
+          display: none;
+        }
+
+        .market-search {
+          min-height: 46px;
+        }
+
+        .search-shortcut {
+          display: none;
+        }
+
+        .market-hero {
+          grid-template-columns: minmax(0, 1fr);
+          padding: 30px 24px 12px;
+          border-radius: 20px;
+        }
+
+        .market-hero h1 {
+          max-width: 360px;
+          font-size: clamp(30px, 9.5vw, 45px);
+          letter-spacing: -1.5px;
+        }
+
+        .hero-description {
+          max-width: 340px;
+          font-size: 12px;
+        }
+
+        .hero-actions {
+          flex-wrap: wrap;
+          gap: 11px;
+        }
+
+        .hero-visual {
+          min-height: 200px;
+        }
+
+        .hero-collection {
+          height: 205px;
+        }
+
+        .hero-orbit {
+          width: 230px;
+        }
+
+        .produce-bowl {
+          width: 145px;
+          height: 145px;
+        }
+
+        .float-card.fresh {
+          top: 6px;
+          right: 0;
+        }
+
+        .float-card.rating {
+          bottom: 9px;
+          left: 0;
+        }
+
+        .trust-strip {
+          grid-template-columns: 1fr;
+          gap: 10px;
+          padding: 15px;
+          margin: 13px 0 29px;
+        }
+
+        .trust-item {
+          justify-content: flex-start;
+        }
+
+        .trust-item + .trust-item {
+          padding-top: 10px;
+          border-top: 1px solid var(--line);
+          border-left: 0;
+        }
+
+        .category-row {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .category {
+          min-height: 58px;
+          padding: 8px;
+        }
+
+        .market-section-heading h2 {
+          font-size: 22px;
+        }
+
+        .market-heading-actions .filter-button {
+          display: none;
+        }
+
+        .product-grid {
+          gap: 10px;
+        }
+
+        .product-image {
+          min-height: 145px;
+          font-size: 58px;
+        }
+
+        .product-info {
+          padding: 11px 10px 12px;
+        }
+
+        .product-info h3 {
+          font-size: 11px;
+        }
+
+        .product-shop {
+          font-size: 9px;
+        }
+
+        .product-bottom {
+          align-items: start;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .product-card .button.small {
+          width: 100%;
+          min-height: 33px;
+        }
+
+        .shop-callout {
+          grid-template-columns: 1fr;
+          padding: 18px;
+        }
+
+        .shop-callout .button {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="prototype-note">
+      <strong>Phase 0 design concept</strong> · Illustrative content only — no real account, order, or payment actions
+    </div>
+    <header class="topbar">
+      <a class="brand" href="#customer" aria-label="Vendor's Market home">
+        <span class="brand-mark" aria-hidden="true">V</span>
+        Vendor's Market
+      </a>
+      <nav class="role-tabs" aria-label="Preview experience">
+        <button class="role-tab" type="button" aria-pressed="true" data-screen="customer">Marketplace</button>
+        <button class="role-tab" type="button" aria-pressed="false" data-screen="vendor">Vendor workspace</button>
+        <button class="role-tab" type="button" aria-pressed="false" data-screen="admin">Admin console</button>
+      </nav>
+      <div class="account">
+        <span class="preview-label">Design preview</span>
+        <button class="cart-button" type="button" aria-label="Demo basket, 0 items">
+          <span aria-hidden="true">▱</span> Basket <span class="cart-count" aria-live="polite">0</span>
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <section id="customer" data-panel>
+        <div class="market-tools">
+          <nav class="market-links" aria-label="Marketplace sections">
+            <a href="#products">Shop all</a>
+            <a href="#categories">Categories</a>
+            <a href="#local-shops">Local shops</a>
+          </nav>
+          <div class="market-location">
+            <span class="location-icon" aria-hidden="true">⌖</span>
+            <span><small>SHOPPING NEAR</small><strong>Kathmandu Valley⌄</strong></span>
+          </div>
+          <label class="search-bar market-search">
+            <span class="search-icon" aria-hidden="true">⌕</span>
+            <input id="market-search" type="search" aria-label="Search products and shops" placeholder="What are you looking for today?" />
+            <span class="search-shortcut"><kbd>⌘</kbd><kbd>K</kbd></span>
+          </label>
+        </div>
+
+        <section class="market-hero" aria-labelledby="hero-title">
+          <div class="hero-copy">
+            <p class="hero-kicker">Good things, close to home</p>
+            <h1 id="hero-title">Your neighbourhood, <em>beautifully found.</em></h1>
+            <p class="hero-description">Meet the makers, growers and little shops that make Kathmandu feel like home. Thoughtful finds, just around the corner.</p>
+            <div class="hero-actions">
+              <a class="button" href="#products">Explore local finds <span aria-hidden="true">→</span></a>
+              <a class="hero-secondary" href="#categories">Browse categories</a>
+            </div>
+          </div>
+          <div class="hero-visual" aria-hidden="true">
+            <div class="hero-orbit"></div>
+            <div class="hero-collection">
+              <div class="produce-bowl"><span>grown nearby</span></div>
+              <div class="float-card fresh"><span class="float-emoji">🌿</span><span><small>FRESH FROM THE FARM</small><strong>Picked this morning</strong></span></div>
+              <div class="float-card rating"><span class="float-emoji">♡</span><span><small>LOVED AROUND THE VALLEY</small><strong>Made by local hands</strong></span></div>
+            </div>
+          </div>
+        </section>
+
+        <div class="trust-strip" aria-label="Marketplace highlights">
+          <div class="trust-item"><span class="trust-icon" aria-hidden="true">✳</span><span><strong>Good things, made nearby</strong>Meet independent local shops</span></div>
+          <div class="trust-item"><span class="trust-icon" aria-hidden="true">✓</span><span><strong>Know who you’re buying from</strong>Every shop has a story</span></div>
+          <div class="trust-item"><span class="trust-icon" aria-hidden="true">⌖</span><span><strong>Close to home</strong>Discover finds around the valley</span></div>
+        </div>
+
+        <section id="categories" class="market-section" aria-labelledby="category-title">
+          <div class="market-section-heading">
+            <div><h2 id="category-title">A little something for every day</h2><p>Thoughtful finds from shops around you.</p></div>
+            <a class="text-link" href="#products">Explore all <span aria-hidden="true">→</span></a>
+          </div>
+          <div class="category-row">
+            <button class="category" type="button" aria-pressed="true" data-category="all"><span class="category-icon" aria-hidden="true">✳</span>Everything</button>
+            <button class="category" type="button" aria-pressed="false" data-category="produce"><span class="category-icon" aria-hidden="true">🥦</span>Fresh produce</button>
+            <button class="category" type="button" aria-pressed="false" data-category="handmade"><span class="category-icon" aria-hidden="true">🧶</span>Handmade</button>
+            <button class="category" type="button" aria-pressed="false" data-category="pantry"><span class="category-icon" aria-hidden="true">☕</span>Pantry</button>
+            <button class="category" type="button" aria-pressed="false" data-category="home"><span class="category-icon" aria-hidden="true">🪴</span>Home & living</button>
+            <button class="category" type="button" aria-pressed="false" data-category="gifts"><span class="category-icon" aria-hidden="true">🎁</span>Little gifts</button>
+          </div>
+        </section>
+
+        <section id="products" class="market-section" aria-labelledby="products-title">
+          <div class="market-section-heading">
+            <div><h2 id="products-title">A few local favourites</h2><p>Well-loved things from lovely neighbourhood shops.</p></div>
+            <div class="market-heading-actions">
+              <span class="filter-button">✓ All shown items in stock</span>
+              <label class="visually-hidden" for="product-sort">Sort products</label>
+              <select id="product-sort" class="sort-select" aria-label="Sort products">
+                <option value="featured">Sort: Featured</option>
+                <option value="price-low">Price: Low to high</option>
+                <option value="price-high">Price: High to low</option>
+              </select>
+            </div>
+          </div>
+          <div class="product-grid" aria-live="polite">
+            <article class="product-card" data-category="produce" data-price="120" data-search="garden tomatoes aama fresh market produce vegetables">
+              <div class="product-image"><span aria-hidden="true">🍅</span><span class="product-tag">Picked today</span><button class="favorite-button" type="button" aria-label="Save Garden tomatoes to favourites" aria-pressed="false">♡</button></div>
+              <div class="product-info">
+                <h3>Garden tomatoes</h3>
+                <p class="product-shop">Aama’s Fresh Market <span aria-label="Rated 4.8 out of 5">· ★ 4.8</span></p>
+                <div class="product-bottom"><div><div class="price">रू 120 <small>/ kg</small></div><div class="stock">● In stock · delivery available</div></div><button class="button small add-to-basket" type="button">Add <span aria-hidden="true">＋</span></button></div>
+              </div>
+            </article>
+            <article class="product-card" data-category="handmade gifts" data-price="850" data-search="woven market basket patan handcraft handmade gifts">
+              <div class="product-image alt-1"><span aria-hidden="true">🧺</span><span class="product-tag">Made by hand</span><button class="favorite-button" type="button" aria-label="Save Woven market basket to favourites" aria-pressed="false">♡</button></div>
+              <div class="product-info">
+                <h3>Woven market basket</h3>
+                <p class="product-shop">Patan Handcraft Co. <span aria-label="Rated 4.9 out of 5">· ★ 4.9</span></p>
+                <div class="product-bottom"><div><div class="price">रू 850</div><div class="stock">● In stock · pickup available</div></div><button class="button small add-to-basket" type="button">Add <span aria-hidden="true">＋</span></button></div>
+              </div>
+            </article>
+            <article class="product-card" data-category="pantry" data-price="540" data-search="himalayan roast coffee hillside roasters pantry">
+              <div class="product-image alt-2"><span aria-hidden="true">☕</span><span class="product-tag">Small-batch roast</span><button class="favorite-button" type="button" aria-label="Save Himalayan roast coffee to favourites" aria-pressed="false">♡</button></div>
+              <div class="product-info">
+                <h3>Himalayan roast coffee</h3>
+                <p class="product-shop">Hillside Roasters <span aria-label="Rated 4.7 out of 5">· ★ 4.7</span></p>
+                <div class="product-bottom"><div><div class="price">रू 540</div><div class="stock">● In stock · delivery available</div></div><button class="button small add-to-basket" type="button">Add <span aria-hidden="true">＋</span></button></div>
+              </div>
+            </article>
+            <article class="product-card" data-category="home gifts" data-price="690" data-search="mini ceramic planter little clay studio home living gifts">
+              <div class="product-image alt-3"><span aria-hidden="true">🪴</span><span class="product-tag">Small-batch pottery</span><button class="favorite-button" type="button" aria-label="Save Mini ceramic planter to favourites" aria-pressed="false">♡</button></div>
+              <div class="product-info">
+                <h3>Mini ceramic planter</h3>
+                <p class="product-shop">The Little Clay Studio <span aria-label="Rated 5 out of 5">· ★ 5.0</span></p>
+                <div class="product-bottom"><div><div class="price">रू 690</div><div class="stock">● In stock · pickup available</div></div><button class="button small add-to-basket" type="button">Add <span aria-hidden="true">＋</span></button></div>
+              </div>
+            </article>
+            <article class="product-card" data-category="produce" data-price="260" data-search="seasonal oranges kirtipur orchard fresh produce fruit">
+              <div class="product-image alt-4"><span aria-hidden="true">🍊</span><span class="product-tag">In season</span><button class="favorite-button" type="button" aria-label="Save Seasonal oranges to favourites" aria-pressed="false">♡</button></div>
+              <div class="product-info">
+                <h3>Sweet seasonal oranges</h3>
+                <p class="product-shop">Kirtipur Orchard <span aria-label="Rated 4.9 out of 5">· ★ 4.9</span></p>
+                <div class="product-bottom"><div><div class="price">रू 260 <small>/ dozen</small></div><div class="stock">● In stock · delivery available</div></div><button class="button small add-to-basket" type="button">Add <span aria-hidden="true">＋</span></button></div>
+              </div>
+            </article>
+            <article class="product-card" data-category="handmade gifts" data-price="480" data-search="handwoven cotton tea towels bhaktapur loom handmade gifts">
+              <div class="product-image alt-5"><span aria-hidden="true">🧣</span><span class="product-tag">Made by hand</span><button class="favorite-button" type="button" aria-label="Save Handwoven tea towels to favourites" aria-pressed="false">♡</button></div>
+              <div class="product-info">
+                <h3>Handwoven tea towels</h3>
+                <p class="product-shop">Bhaktapur Loom <span aria-label="Rated 4.8 out of 5">· ★ 4.8</span></p>
+                <div class="product-bottom"><div><div class="price">रू 480</div><div class="stock">● In stock · pickup available</div></div><button class="button small add-to-basket" type="button">Add <span aria-hidden="true">＋</span></button></div>
+              </div>
+            </article>
+            <article class="product-card" data-category="pantry" data-price="390" data-search="wildflower honey kavre apiary local pantry">
+              <div class="product-image alt-6"><span aria-hidden="true">🍯</span><span class="product-tag">From Kavre</span><button class="favorite-button" type="button" aria-label="Save Wildflower honey to favourites" aria-pressed="false">♡</button></div>
+              <div class="product-info">
+                <h3>Wildflower honey</h3>
+                <p class="product-shop">Kavre Apiary <span aria-label="Rated 4.9 out of 5">· ★ 4.9</span></p>
+                <div class="product-bottom"><div><div class="price">रू 390</div><div class="stock">● In stock · delivery available</div></div><button class="button small add-to-basket" type="button">Add <span aria-hidden="true">＋</span></button></div>
+              </div>
+            </article>
+            <article class="product-card" data-category="home gifts" data-price="720" data-search="hand poured soy candle garden studio home gifts">
+              <div class="product-image alt-7"><span aria-hidden="true">🕯️</span><span class="product-tag">Small-batch</span><button class="favorite-button" type="button" aria-label="Save Hand-poured candle to favourites" aria-pressed="false">♡</button></div>
+              <div class="product-info">
+                <h3>Hand-poured soy candle</h3>
+                <p class="product-shop">The Garden Studio <span aria-label="Rated 4.7 out of 5">· ★ 4.7</span></p>
+                <div class="product-bottom"><div><div class="price">रू 720</div><div class="stock">● In stock · pickup available</div></div><button class="button small add-to-basket" type="button">Add <span aria-hidden="true">＋</span></button></div>
+              </div>
+            </article>
+          </div>
+          <p class="market-status" role="status" aria-live="polite"></p>
+        </section>
+
+        <section id="local-shops" class="shop-callout" aria-labelledby="shop-callout-title">
+          <div><h2 id="shop-callout-title">Have something lovely to share?</h2><p>Give your neighbourhood a place to find your shop.</p></div>
+          <a class="button secondary" href="#vendor">Meet the vendor workspace <span aria-hidden="true">→</span></a>
+        </section>
+      </section>
+
+      <section id="vendor" data-panel hidden>
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">Patan Handcraft Co.</p>
+            <h1>Good afternoon, Maya.</h1>
+            <p class="subtitle">Here is what is happening with your shop today.</p>
+          </div>
+          <button class="button" type="button">＋ Add a product</button>
+        </div>
+        <div class="workspace">
+          <aside class="sidebar" aria-label="Vendor navigation">
+            <div class="sidebar-shop"><span class="shop-logo" aria-hidden="true">🧺</span><span><strong>Patan Handcraft</strong><small><span class="badge">Verified shop</span></small></span></div>
+            <div class="side-link active"><span aria-hidden="true">▦</span>Overview</div>
+            <div class="side-link"><span aria-hidden="true">▧</span>Orders <span class="badge orange">3 new</span></div>
+            <div class="side-link"><span aria-hidden="true">◇</span>Products</div>
+            <div class="side-link"><span aria-hidden="true">▤</span>Inventory</div>
+            <div class="side-link"><span aria-hidden="true">⚙</span>Shop settings</div>
+          </aside>
+          <div class="workspace-content">
+            <div class="stats">
+              <article class="stat-card"><div class="stat-label">Orders to fulfil</div><div class="stat-value">8</div><div class="stat-change">3 need confirmation</div></article>
+              <article class="stat-card"><div class="stat-label">Sales this month</div><div class="stat-value">रू 86,400</div><div class="stat-change">↑ 12% from last month</div></article>
+              <article class="stat-card"><div class="stat-label">Products in stock</div><div class="stat-value">42</div><div class="stat-change">4 running low</div></article>
+            </div>
+            <section class="panel" aria-labelledby="vendor-orders-title">
+              <div class="panel-header"><h2 id="vendor-orders-title">Recent orders</h2><a class="text-link" href="#vendor">All orders →</a></div>
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th>Order</th><th>Customer</th><th>Placed</th><th>Total</th><th>Status</th><th>Next step</th></tr></thead>
+                  <tbody>
+                    <tr><td><strong>#VM-2048</strong></td><td><span class="customer-cell"><span class="mini-avatar">AS</span>Aarav S.</span></td><td>Today, 10:42</td><td>रू 1,700</td><td><span class="badge orange">Needs confirmation</span></td><td><button class="button small" type="button">Review</button></td></tr>
+                    <tr><td><strong>#VM-2047</strong></td><td><span class="customer-cell"><span class="mini-avatar">NP</span>Nisha P.</span></td><td>Today, 09:18</td><td>रू 850</td><td><span class="badge">Preparing</span></td><td><button class="button small secondary" type="button">View</button></td></tr>
+                    <tr><td><strong>#VM-2042</strong></td><td><span class="customer-cell"><span class="mini-avatar">RK</span>Rohan K.</span></td><td>Yesterday</td><td>रू 2,540</td><td><span class="badge gray">Ready for pickup</span></td><td><button class="button small secondary" type="button">View</button></td></tr>
+                    <tr><td><strong>#VM-2038</strong></td><td><span class="customer-cell"><span class="mini-avatar">ST</span>Sita T.</span></td><td>Yesterday</td><td>रू 690</td><td><span class="badge">In transit</span></td><td><button class="button small secondary" type="button">View</button></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section id="admin" data-panel hidden>
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">Marketplace operations</p>
+            <h1>Verification queue</h1>
+            <p class="subtitle">Review applications and keep decisions clear, consistent, and traceable.</p>
+          </div>
+          <span class="badge orange">12 awaiting review</span>
+        </div>
+        <div class="admin-overview" aria-label="Illustrative verification metrics">
+          <article class="stat-card"><div class="stat-label">Awaiting first review</div><div class="stat-value">12</div><div class="stat-change">4 submitted today</div></article>
+          <article class="stat-card"><div class="stat-label">More information requested</div><div class="stat-value">4</div><div class="stat-change">Waiting on applicants</div></article>
+          <article class="stat-card"><div class="stat-label">Reviewed this week</div><div class="stat-value">18</div><div class="stat-change">Across all categories</div></article>
+        </div>
+        <div class="review-layout">
+          <section class="panel" aria-labelledby="applications-title">
+            <div class="panel-header"><h2 id="applications-title">Applications to review</h2><button class="button small secondary" type="button">Filter</button></div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Shop</th><th>Category</th><th>Submitted</th><th>Status</th><th>Action</th></tr></thead>
+                <tbody>
+                  <tr><td><strong>Bhaktapur Clay House</strong></td><td>Home & living</td><td>Today, 09:24</td><td><span class="badge orange">In review</span></td><td><button class="button small" type="button">Review</button></td></tr>
+                  <tr><td><strong>Green Basket Organics</strong></td><td>Fresh produce</td><td>Yesterday</td><td><span class="badge gray">Submitted</span></td><td><button class="button small secondary" type="button">Review</button></td></tr>
+                  <tr><td><strong>Himalayan Stitch Studio</strong></td><td>Handmade</td><td>Oct 30</td><td><span class="badge orange">Info requested</span></td><td><button class="button small secondary" type="button">View</button></td></tr>
+                  <tr><td><strong>Morning Sun Pantry</strong></td><td>Pantry</td><td>Oct 29</td><td><span class="badge gray">Submitted</span></td><td><button class="button small secondary" type="button">Review</button></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="review-summary">
+              <span class="badge orange">Selected · In review</span>
+              <h3 style="margin: 13px 0 5px">Bhaktapur Clay House</h3>
+              <p>Handmade ceramic tableware · Bhaktapur, Bagmati Province<br />Submitted by Anisha Maharjan · 3 documents provided</p>
+            </div>
+            <form id="admin-review-form" class="review-fields">
+              <label class="review-field">Decision
+                <select name="decision" required>
+                  <option value="" selected disabled>Choose an action</option>
+                  <option value="approve">Approve shop</option>
+                  <option value="request_information">Request information</option>
+                  <option value="reject">Reject application</option>
+                </select>
+              </label>
+              <label class="review-field">Reason (required)
+                <input name="reason" required minlength="8" placeholder="Add a clear review note" />
+              </label>
+              <div class="review-field wide">
+                <button class="button secondary" type="button">Open private documents securely</button>
+                <button class="button" type="submit">Preview decision</button>
+              </div>
+              <p class="review-status" role="status" hidden></p>
+            </form>
+          </section>
+          <aside class="review-aside">
+            <h3>Review checklist</h3>
+            <div class="check-row"><span class="check" aria-hidden="true">✓</span><span>Business details are complete</span></div>
+            <div class="check-row"><span class="check" aria-hidden="true">✓</span><span>Shop category and activity are clear</span></div>
+            <div class="check-row"><span class="check" aria-hidden="true">✓</span><span>Required evidence is available for authorized review</span></div>
+            <div class="check-row"><span aria-hidden="true">○</span><span>Decision reason is recorded before submitting</span></div>
+            <hr style="border: 0; border-top: 1px solid #dce7dc; margin: 18px 0" />
+            <p style="color: #536159; font-size: 11px; line-height: 1.55">This concept shows a review workspace only. Private files are never displayed as public URLs, and every decision is expected to create an audit event.</p>
+            <span class="badge gray">Illustrative sample metrics</span>
+          </aside>
+        </div>
+      </section>
+      <p class="footer-note">Design exploration · Sample names, products, figures, and orders are fictional.</p>
+    </main>
+    <script>
+      const tabs = Array.from(document.querySelectorAll("[data-screen]"));
+      const panels = Array.from(document.querySelectorAll("[data-panel]"));
+      const searchInput = document.querySelector("#market-search");
+      const categoryButtons = Array.from(document.querySelectorAll("[data-category]"));
+      const productGrid = document.querySelector(".product-grid");
+      const status = document.querySelector(".market-status");
+      const basketCount = document.querySelector(".cart-count");
+      const basketButton = document.querySelector(".cart-button");
+      const sortSelect = document.querySelector("#product-sort");
+      const adminReviewForm = document.querySelector("#admin-review-form");
+      const adminReviewStatus = document.querySelector(".review-status");
+      const products = Array.from(productGrid.querySelectorAll(".product-card"));
+      products.forEach((product, index) => {
+        product.dataset.featuredOrder = String(index);
+      });
+      let selectedCategory = "all";
+      let basketItems = 0;
+
+      for (const tab of tabs) {
+        tab.addEventListener("click", () => {
+          const selectedScreen = tab.dataset.screen;
+          for (const item of tabs) {
+            item.setAttribute("aria-pressed", String(item === tab));
+          }
+          for (const panel of panels) {
+            panel.hidden = panel.id !== selectedScreen;
+          }
+          basketButton.hidden = selectedScreen !== "customer";
+        });
+      }
+
+      function updateProducts() {
+        const query = searchInput.value.trim().toLocaleLowerCase();
+        let visibleCount = 0;
+
+        for (const product of products) {
+          const matchesCategory =
+            selectedCategory === "all" ||
+            product.dataset.category.split(" ").includes(selectedCategory);
+          const matchesSearch =
+            query === "" ||
+            `${product.dataset.search} ${product.textContent}`
+              .toLocaleLowerCase()
+              .includes(query);
+          product.hidden = !matchesCategory || !matchesSearch;
+          if (!product.hidden) visibleCount += 1;
+        }
+
+        let emptyState = productGrid.querySelector(".empty-state");
+        if (visibleCount === 0) {
+          if (!emptyState) {
+            emptyState = document.createElement("p");
+            emptyState.className = "empty-state";
+            emptyState.textContent =
+              "No local finds match that search. Try another product or category.";
+            productGrid.append(emptyState);
+          }
+        } else if (emptyState) {
+          emptyState.remove();
+        }
+      }
+
+      for (const categoryButton of categoryButtons) {
+        categoryButton.addEventListener("click", () => {
+          selectedCategory = categoryButton.dataset.category;
+          for (const button of categoryButtons) {
+            button.setAttribute(
+              "aria-pressed",
+              String(button === categoryButton),
+            );
+          }
+          updateProducts();
+        });
+      }
+
+      searchInput.addEventListener("input", updateProducts);
+
+      sortSelect.addEventListener("change", () => {
+        const sortedProducts = [...products];
+        if (sortSelect.value === "price-low") {
+          sortedProducts.sort(
+            (first, second) =>
+              Number(first.dataset.price) - Number(second.dataset.price),
+          );
+        } else if (sortSelect.value === "price-high") {
+          sortedProducts.sort(
+            (first, second) =>
+              Number(second.dataset.price) - Number(first.dataset.price),
+          );
+        } else {
+          sortedProducts.sort(
+            (first, second) =>
+              Number(first.dataset.featuredOrder) -
+              Number(second.dataset.featuredOrder),
+          );
+        }
+        for (const product of sortedProducts) {
+          productGrid.append(product);
+        }
+        updateProducts();
+      });
+
+      for (const button of document.querySelectorAll(".add-to-basket")) {
+        button.addEventListener("click", () => {
+          basketItems += 1;
+          basketCount.textContent = String(basketItems);
+          basketButton.setAttribute(
+            "aria-label",
+            `Demo basket, ${basketItems} ${basketItems === 1 ? "item" : "items"}`,
+          );
+          const productName = button
+            .closest(".product-card")
+            .querySelector("h3").textContent;
+          status.textContent = `${productName} added to your demo basket. No order has been placed.`;
+        });
+      }
+
+      for (const button of document.querySelectorAll(".favorite-button")) {
+        button.addEventListener("click", () => {
+          const isFavorite = button.getAttribute("aria-pressed") !== "true";
+          const productName = button
+            .closest(".product-card")
+            .querySelector("h3").textContent;
+          button.setAttribute("aria-pressed", String(isFavorite));
+          button.textContent = isFavorite ? "♥" : "♡";
+          button.setAttribute(
+            "aria-label",
+            `${isFavorite ? "Remove" : "Save"} ${productName} ${isFavorite ? "from" : "to"} favourites`,
+          );
+          status.textContent = isFavorite
+            ? `${productName} saved to your preview favourites.`
+            : `${productName} removed from your preview favourites.`;
+        });
+      }
+
+      basketButton.addEventListener("click", () => {
+        status.textContent =
+          basketItems === 0
+            ? "Your demo basket is empty. Add a local favourite to preview it."
+            : `Your demo basket has ${basketItems} ${basketItems === 1 ? "item" : "items"}. Checkout is not available in this preview.`;
+        document.querySelector("#products").scrollIntoView({ behavior: "smooth" });
+      });
+
+      adminReviewForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const formData = new FormData(adminReviewForm);
+        const decisions = {
+          approve: "Approval",
+          request_information: "Information request",
+          reject: "Rejection",
+        };
+        const decision = decisions[formData.get("decision")];
+        adminReviewStatus.textContent = `Preview only: ${decision} and your reason are shown here; no application was changed or saved.`;
+        adminReviewStatus.hidden = false;
+      });
+
+      document.addEventListener("keydown", (event) => {
+        if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "k") {
+          event.preventDefault();
+          searchInput.focus();
+        }
+      });
+    </script>
+  </body>
+</html>

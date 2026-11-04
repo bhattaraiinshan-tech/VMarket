@@ -22,10 +22,37 @@ type Address = {
   phone: string;
   province: string;
   city: string;
-  area: string;
+  area: string | null;
   street_address: string;
-  postal_code: string;
+  postal_code: string | null;
   is_default: boolean;
+};
+
+type AuthSession = {
+  id: string;
+  created_at: string;
+  last_seen_at: string;
+  expires_at: string;
+  user_agent: string | null;
+  current: boolean;
+};
+
+type AdminAccount = {
+  id: string;
+  email: string;
+  account_status: string;
+  roles: string[];
+  created_at: string;
+};
+
+type AuditEvent = {
+  id: string;
+  actor_id: string | null;
+  action: string;
+  target_type: string;
+  target_id: string;
+  details: string | null;
+  created_at: string;
 };
 
 type VendorApplication = {
@@ -48,7 +75,10 @@ type VerificationDocument = {
   file_size: number;
 };
 
-type AddressDraft = Omit<Address, 'id'>;
+type AddressDraft = Omit<Address, 'id' | 'area' | 'postal_code'> & {
+  area: string;
+  postal_code: string;
+};
 
 const emptyAddress: AddressDraft = {
   label: 'Home',
@@ -100,7 +130,13 @@ function inputClassName() {
 export default function IdentityPortal() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [addresses, setAddresses] = useState<Address[]>([]);
+  const [sessions, setSessions] = useState<AuthSession[]>([]);
   const [applications, setApplications] = useState<VendorApplication[]>([]);
+  const [adminUsers, setAdminUsers] = useState<AdminAccount[]>([]);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [suspensionReasons, setSuspensionReasons] = useState<
+    Record<string, string>
+  >({});
   const [pendingApplications, setPendingApplications] = useState<
     VendorApplication[]
   >([]);
@@ -121,6 +157,7 @@ export default function IdentityPortal() {
   const [profilePhone, setProfilePhone] = useState('');
   const [deactivationPassword, setDeactivationPassword] = useState('');
   const [addressDraft, setAddressDraft] = useState(emptyAddress);
+  const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const [businessName, setBusinessName] = useState('');
   const [businessType, setBusinessType] = useState('');
   const [businessAddress, setBusinessAddress] = useState('');
@@ -134,17 +171,30 @@ export default function IdentityPortal() {
   const loadAccountData = useCallback(async (account: UserProfile) => {
     setProfileName(account.profile?.full_name ?? '');
     setProfilePhone(account.profile?.phone ?? '');
-    const [savedAddresses, savedApplications] = await Promise.all([
-      request<Address[]>('/me/addresses'),
-      request<VendorApplication[]>('/vendors/applications/me'),
-    ]);
+    const [savedAddresses, savedApplications, activeSessions] =
+      await Promise.all([
+        request<Address[]>('/me/addresses'),
+        request<VendorApplication[]>('/vendors/applications/me'),
+        request<AuthSession[]>('/auth/sessions'),
+      ]);
     setAddresses(savedAddresses);
     setApplications(savedApplications);
+    setSessions(activeSessions);
     if (account.roles.includes('admin')) {
-      const pending = await request<VendorApplication[]>(
-        '/admin/vendor-applications?status=pending',
-      );
+      const [pending, accounts, events] = await Promise.all([
+        request<VendorApplication[]>(
+          '/admin/vendor-applications?status=pending',
+        ),
+        request<AdminAccount[]>('/admin/users'),
+        request<AuditEvent[]>('/admin/audit-logs'),
+      ]);
       setPendingApplications(pending);
+      setAdminUsers(accounts);
+      setAuditEvents(events);
+    } else {
+      setPendingApplications([]);
+      setAdminUsers([]);
+      setAuditEvents([]);
     }
   }, []);
 
@@ -257,16 +307,91 @@ export default function IdentityPortal() {
   async function addAddress(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await runAction(async () => {
-      const address = await request<Address>('/me/addresses', {
-        method: 'POST',
-        body: JSON.stringify(addressDraft),
-      });
-      setAddresses((current) => [
-        address,
-        ...current.map((item) => ({ ...item, is_default: false })),
-      ]);
+      await request<Address>(
+        editingAddressId
+          ? `/me/addresses/${editingAddressId}`
+          : '/me/addresses',
+        {
+          method: editingAddressId ? 'PUT' : 'POST',
+          body: JSON.stringify(addressDraft),
+        },
+      );
+      setAddresses(await request<Address[]>('/me/addresses'));
       setAddressDraft(emptyAddress);
-      setMessage('Delivery address saved.');
+      setEditingAddressId(null);
+      setMessage(
+        editingAddressId
+          ? 'Delivery address updated.'
+          : 'Delivery address saved.',
+      );
+    });
+  }
+
+  function editAddress(address: Address) {
+    setEditingAddressId(address.id);
+    setAddressDraft({
+      label: address.label,
+      recipient_name: address.recipient_name,
+      phone: address.phone,
+      province: address.province,
+      city: address.city,
+      area: address.area ?? '',
+      street_address: address.street_address,
+      postal_code: address.postal_code ?? '',
+      is_default: address.is_default,
+    });
+  }
+
+  async function removeAddress(address: Address) {
+    await runAction(async () => {
+      await request(`/me/addresses/${address.id}`, { method: 'DELETE' });
+      setAddresses(await request<Address[]>('/me/addresses'));
+      if (editingAddressId === address.id) {
+        setEditingAddressId(null);
+        setAddressDraft(emptyAddress);
+      }
+      setMessage('Delivery address deleted.');
+    });
+  }
+
+  async function revokeSession(authSession: AuthSession) {
+    await runAction(async () => {
+      if (authSession.current) {
+        await request('/auth/logout', { method: 'POST' });
+        setUser(null);
+        setAddresses([]);
+        setSessions([]);
+        setApplications([]);
+        return;
+      }
+      await request(`/auth/sessions/${authSession.id}`, { method: 'DELETE' });
+      setSessions(await request<AuthSession[]>('/auth/sessions'));
+      setMessage('Session revoked.');
+    });
+  }
+
+  async function setAccountSuspension(
+    account: AdminAccount,
+    suspended: boolean,
+  ) {
+    const reason = suspensionReasons[account.id]?.trim() ?? '';
+    await runAction(async () => {
+      await request(`/admin/users/${account.id}/suspension`, {
+        method: 'POST',
+        body: JSON.stringify({ suspended, reason }),
+      });
+      const [accounts, events] = await Promise.all([
+        request<AdminAccount[]>('/admin/users'),
+        request<AuditEvent[]>('/admin/audit-logs'),
+      ]);
+      setAdminUsers(accounts);
+      setAuditEvents(events);
+      setSuspensionReasons((current) => ({ ...current, [account.id]: '' }));
+      setMessage(
+        suspended
+          ? 'The account has been suspended.'
+          : 'The account has been reactivated.',
+      );
     });
   }
 
@@ -325,6 +450,7 @@ export default function IdentityPortal() {
           }),
         },
       );
+      setAuditEvents(await request<AuditEvent[]>('/admin/audit-logs'));
       setPendingApplications((current) =>
         current.filter((item) => item.id !== application.id),
       );
@@ -356,6 +482,7 @@ export default function IdentityPortal() {
         ...current,
         [document.id]: result.url,
       }));
+      setAuditEvents(await request<AuditEvent[]>('/admin/audit-logs'));
     });
   }
 
@@ -521,14 +648,36 @@ export default function IdentityPortal() {
                     className="rounded-lg bg-slate-50 p-3 text-sm"
                     key={address.id}
                   >
-                    <span className="font-semibold">
-                      {address.label}
-                      {address.is_default ? ' - Default' : ''}
-                    </span>
-                    <p className="mt-1 text-slate-600">
-                      {address.recipient_name}, {address.street_address},{' '}
-                      {address.city}, {address.province}
-                    </p>
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <span className="font-semibold">
+                          {address.label}
+                          {address.is_default ? ' - Default' : ''}
+                        </span>
+                        <p className="mt-1 text-slate-600">
+                          {address.recipient_name}, {address.street_address},{' '}
+                          {address.city}, {address.province}
+                        </p>
+                      </div>
+                      <div className="flex gap-3">
+                        <button
+                          className="font-medium text-emerald-800 underline"
+                          disabled={busy}
+                          onClick={() => editAddress(address)}
+                          type="button"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="font-medium text-red-800 underline"
+                          disabled={busy}
+                          onClick={() => void removeAddress(address)}
+                          type="button"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -586,10 +735,62 @@ export default function IdentityPortal() {
                 disabled={busy}
                 type="submit"
               >
-                Add address
+                {editingAddressId ? 'Save address' : 'Add address'}
               </button>
+              {editingAddressId && (
+                <button
+                  className="w-fit rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50 sm:col-span-2"
+                  disabled={busy}
+                  onClick={() => {
+                    setEditingAddressId(null);
+                    setAddressDraft(emptyAddress);
+                  }}
+                  type="button"
+                >
+                  Cancel editing
+                </button>
+              )}
             </form>
           </article>
+        </section>
+
+        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold">Signed-in sessions</h2>
+          {sessions.length === 0 ? (
+            <p className="mt-2 text-sm text-slate-600">
+              No active sessions were found.
+            </p>
+          ) : (
+            <ul className="mt-3 space-y-3">
+              {sessions.map((authSession) => (
+                <li
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 p-3 text-sm"
+                  key={authSession.id}
+                >
+                  <div>
+                    <p className="font-semibold">
+                      {authSession.user_agent || 'Unknown device'}
+                      {authSession.current ? ' - This device' : ''}
+                    </p>
+                    <p className="mt-1 text-slate-600">
+                      Signed in{' '}
+                      {new Date(authSession.created_at).toLocaleString()} | Last
+                      active{' '}
+                      {new Date(authSession.last_seen_at).toLocaleString()}
+                    </p>
+                  </div>
+                  <button
+                    className="font-medium text-red-800 underline"
+                    disabled={busy}
+                    onClick={() => void revokeSession(authSession)}
+                    type="button"
+                  >
+                    {authSession.current ? 'Sign out' : 'Revoke session'}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
 
         <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -704,87 +905,181 @@ export default function IdentityPortal() {
         </section>
 
         {user.roles.includes('admin') && (
-          <section className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
-            <h2 className="text-lg font-semibold">
-              Administrator review queue
-            </h2>
-            {pendingApplications.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-600">
-                There are no pending vendor applications.
-              </p>
-            ) : (
-              <ul className="mt-4 space-y-3">
-                {pendingApplications.map((application) => (
-                  <li
-                    className="rounded-xl border border-emerald-100 bg-white p-4"
-                    key={application.id}
-                  >
-                    <p className="font-semibold">{application.business_name}</p>
-                    <p className="mt-1 text-sm text-slate-600">
-                      {application.email} | {application.business_type} |{' '}
-                      {application.business_address}
-                    </p>
-                    <div className="mt-3 flex gap-2">
-                      <button
-                        className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white"
-                        disabled={busy}
-                        onClick={() =>
-                          void reviewApplication(application, 'approved')
-                        }
-                        type="button"
-                      >
-                        Approve
-                      </button>
-                      <button
-                        className="rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold text-red-800"
-                        disabled={busy}
-                        onClick={() =>
-                          void reviewApplication(application, 'rejected')
-                        }
-                        type="button"
-                      >
-                        Reject
-                      </button>
-                    </div>
-                    <button
-                      className="mt-3 text-sm font-medium text-emerald-800 underline underline-offset-2"
-                      disabled={busy}
-                      onClick={() => void loadAdminDocuments(application)}
-                      type="button"
+          <div className="mt-6 space-y-6">
+            <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
+              <h2 className="text-lg font-semibold">
+                Administrator review queue
+              </h2>
+              {pendingApplications.length === 0 ? (
+                <p className="mt-2 text-sm text-slate-600">
+                  There are no pending vendor applications.
+                </p>
+              ) : (
+                <ul className="mt-4 space-y-3">
+                  {pendingApplications.map((application) => (
+                    <li
+                      className="rounded-xl border border-emerald-100 bg-white p-4"
+                      key={application.id}
                     >
-                      Load submitted documents
-                    </button>
-                    {adminDocuments[application.id]?.map((document) => (
-                      <p className="mt-2 text-sm" key={document.id}>
-                        {document.document_type}: {document.original_filename}{' '}
-                        {adminDocumentUrls[document.id] ? (
-                          <a
-                            className="font-medium text-emerald-800 underline"
-                            href={adminDocumentUrls[document.id]}
-                            rel="noreferrer"
-                            target="_blank"
-                          >
-                            Open secure link
-                          </a>
-                        ) : (
+                      <p className="font-semibold">
+                        {application.business_name}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-600">
+                        {application.email} | {application.business_type} |{' '}
+                        {application.business_address}
+                      </p>
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white"
+                          disabled={busy}
+                          onClick={() =>
+                            void reviewApplication(application, 'approved')
+                          }
+                          type="button"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          className="rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold text-red-800"
+                          disabled={busy}
+                          onClick={() =>
+                            void reviewApplication(application, 'rejected')
+                          }
+                          type="button"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                      <button
+                        className="mt-3 text-sm font-medium text-emerald-800 underline underline-offset-2"
+                        disabled={busy}
+                        onClick={() => void loadAdminDocuments(application)}
+                        type="button"
+                      >
+                        Load submitted documents
+                      </button>
+                      {adminDocuments[application.id]?.map((document) => (
+                        <p className="mt-2 text-sm" key={document.id}>
+                          {document.document_type}: {document.original_filename}{' '}
+                          {adminDocumentUrls[document.id] ? (
+                            <a
+                              className="font-medium text-emerald-800 underline"
+                              href={adminDocumentUrls[document.id]}
+                              rel="noreferrer"
+                              target="_blank"
+                            >
+                              Open secure link
+                            </a>
+                          ) : (
+                            <button
+                              className="font-medium text-emerald-800 underline"
+                              disabled={busy}
+                              onClick={() =>
+                                void createAdminDocumentUrl(
+                                  application,
+                                  document,
+                                )
+                              }
+                              type="button"
+                            >
+                              Create 5-minute link
+                            </button>
+                          )}
+                        </p>
+                      ))}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h2 className="text-lg font-semibold">Account access controls</h2>
+              <ul className="mt-4 space-y-3">
+                {adminUsers.map((account) => {
+                  const canChangeStatus =
+                    account.id !== user.id &&
+                    account.account_status !== 'deactivated';
+                  const suspended = account.account_status === 'suspended';
+                  return (
+                    <li className="rounded-lg bg-slate-50 p-3" key={account.id}>
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="font-semibold">{account.email}</p>
+                          <p className="text-sm text-slate-600">
+                            {account.roles.join(', ')} |{' '}
+                            {account.account_status}
+                          </p>
+                        </div>
+                        {canChangeStatus && (
                           <button
-                            className="font-medium text-emerald-800 underline"
-                            disabled={busy}
+                            className={`rounded-lg px-3 py-2 text-sm font-semibold ${suspended ? 'bg-emerald-700 text-white' : 'border border-red-300 text-red-800'}`}
+                            disabled={
+                              busy ||
+                              (suspensionReasons[account.id]?.trim().length ??
+                                0) < 5
+                            }
                             onClick={() =>
-                              void createAdminDocumentUrl(application, document)
+                              void setAccountSuspension(account, !suspended)
                             }
                             type="button"
                           >
-                            Create 5-minute link
+                            {suspended ? 'Reactivate' : 'Suspend'}
                           </button>
                         )}
-                      </p>
-                    ))}
-                  </li>
-                ))}
+                      </div>
+                      {canChangeStatus && (
+                        <label className="mt-3 block text-sm font-medium">
+                          Reason for {suspended ? 'reactivation' : 'suspension'}
+                          <input
+                            className={inputClassName()}
+                            minLength={5}
+                            onChange={(event) =>
+                              setSuspensionReasons((current) => ({
+                                ...current,
+                                [account.id]: event.target.value,
+                              }))
+                            }
+                            required
+                            value={suspensionReasons[account.id] ?? ''}
+                          />
+                        </label>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
-            )}
-          </section>
+            </section>
+
+            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h2 className="text-lg font-semibold">
+                Administrative audit history
+              </h2>
+              {auditEvents.length === 0 ? (
+                <p className="mt-2 text-sm text-slate-600">
+                  No administrative events have been recorded.
+                </p>
+              ) : (
+                <ul className="mt-3 space-y-2">
+                  {auditEvents.map((event) => (
+                    <li
+                      className="rounded-lg bg-slate-50 p-3 text-sm"
+                      key={event.id}
+                    >
+                      <p className="font-semibold">{event.action}</p>
+                      <p className="mt-1 text-slate-600">
+                        {event.target_type} {event.target_id} |{' '}
+                        {new Date(event.created_at).toLocaleString()}
+                      </p>
+                      {event.details && (
+                        <p className="mt-1 text-slate-600">{event.details}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
         )}
       </main>
     );

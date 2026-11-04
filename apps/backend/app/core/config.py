@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     minio_secure: bool = False
     minio_public_bucket: str = "product-media"
     minio_private_bucket: str = "vendor-documents"
+    mail_host: str = "localhost"
+    mail_port: int = 1025
+    mail_username: str | None = None
+    mail_password: SecretStr | None = None
+    mail_starttls: bool = False
+    mail_from: str = "no-reply@vendors-market.local"
+    web_base_url: str = "http://localhost:3000"
     cors_origins: list[str] = ["http://localhost:3000"]
 
     @field_validator("database_url")
@@ -84,6 +91,34 @@ class Settings(BaseSettings):
                 )
         return value
 
+    @field_validator("mail_port")
+    @classmethod
+    def validate_mail_port(cls, value: int) -> int:
+        if not 1 <= value <= 65535:
+            raise ValueError("mail_port must be between 1 and 65535")
+        return value
+
+    @field_validator("web_base_url")
+    @classmethod
+    def validate_web_base_url(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            raise ValueError("web_base_url must contain a valid port") from exc
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+            or parsed.username
+            or parsed.password
+            or (port is not None and not 1 <= port <= 65535)
+        ):
+            raise ValueError("web_base_url must be an origin without credentials or a path")
+        return value.rstrip("/")
+
     @model_validator(mode="after")
     def validate_deployment_settings(self) -> "Settings":
         if self.environment not in {"staging", "production"}:
@@ -111,6 +146,18 @@ class Settings(BaseSettings):
             raise ValueError("staging and production require a non-development MinIO access key")
         if self.minio_secret_key.get_secret_value() == "vmarket-local-secret":
             raise ValueError("staging and production require a non-development MinIO secret key")
+        mail_host = self.mail_host.lower()
+        if mail_host in {"localhost", "127.0.0.1", "::1"}:
+            raise ValueError("staging and production require a remote email service")
+        if (
+            not self.mail_starttls
+            or not self.mail_username
+            or not self.mail_password
+            or not self.mail_password.get_secret_value()
+        ):
+            raise ValueError("staging and production require authenticated email with STARTTLS")
+        if urlsplit(self.web_base_url).scheme != "https":
+            raise ValueError("staging and production require an HTTPS web_base_url")
         return self
 
 

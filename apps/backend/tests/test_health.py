@@ -96,6 +96,21 @@ async def test_validation_errors_use_the_api_error_shape() -> None:
     assert response.json()["error"]["details"][0]["location"] == ["query", "limit"]
 
 
+async def test_state_changing_requests_reject_untrusted_origins() -> None:
+    async with AsyncClient(
+        transport=ASGITransport(app=create_app()),
+        base_url="http://test",
+    ) as client:
+        response = await client.post(
+            "/api/v1/auth/logout",
+            headers={"Origin": "https://attacker.example"},
+        )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "request_origin_not_allowed"
+    assert response.headers["X-Request-ID"] == response.json()["request_id"]
+
+
 async def test_unexpected_errors_are_sanitized_and_logged(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

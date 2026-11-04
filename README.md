@@ -3,11 +3,13 @@
 Vendor's Market is a commerce platform for customers, retail vendors, and wholesale businesses in Nepal. It is built as a
 modular monolith with a Next.js web app and a versioned FastAPI backend.
 
-## Phase 1: Project foundation
+## Phase 1: Project foundation and Phase 2: Identity and access
 
 The repository includes a Next.js customer-facing application shell, a FastAPI service, PostgreSQL/PostGIS and MinIO for
 local development, database migrations, structured API errors and logs, dependency health checks, and automated quality
-checks. Authentication, catalogue management, and order processing are later-phase work.
+checks. Identity features include email verification, password recovery, server-side sessions, customer profiles and
+delivery addresses, vendor verification applications with private documents, role-based admin operations, account
+suspension/deactivation, and audit history. Catalogue management and order processing are later-phase work.
 
 ## Prerequisites
 
@@ -17,15 +19,17 @@ checks. Authentication, catalogue management, and order processing are later-pha
 
 ## Start local dependencies
 
-From the repository root, copy `.env.example` to `.env`, then start PostgreSQL/PostGIS and MinIO:
+From the repository root, copy `.env.example` to `.env`, then start PostgreSQL/PostGIS, MinIO, and the local Mailpit
+email catcher:
 
 ```powershell
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 docker compose up -d --build --wait
 ```
 
-PostgreSQL is available on `localhost:5432`; the MinIO S3 API and console are on `localhost:9000` and
-`localhost:9001`. The credentials in `.env.example` are for local development only.
+PostgreSQL is available on `localhost:5432`; the MinIO S3 API and console are on `localhost:9000` and `localhost:9001`.
+Mailpit accepts SMTP on `localhost:1025` and its inbox UI is at `http://localhost:8025`. The credentials in
+`.env.example` are for local development only.
 
 MinIO is built from a pinned official community source release because its published container images are no longer
 accessible. The first build downloads Go dependencies and can take several minutes. No MinIO subscription or license key
@@ -49,6 +53,22 @@ The API is available at `http://localhost:8000`; interactive OpenAPI documentati
 dependency readiness are reported at `/api/v1/health/live` and `/api/v1/health/ready`. Readiness checks PostgreSQL and
 authenticates to MinIO; a dependency failure returns HTTP 503 without disclosing connection details.
 
+Registration and password recovery email is sent through SMTP. The local Mailpit inbox lets you open verification and
+password-reset links without a third-party provider. Configure `VMARKET_MAIL_HOST`, `VMARKET_MAIL_PORT`,
+`VMARKET_MAIL_USERNAME`, `VMARKET_MAIL_PASSWORD`, `VMARKET_MAIL_STARTTLS`, `VMARKET_MAIL_FROM`, and
+`VMARKET_WEB_BASE_URL` for the deployment's email provider and public web origin. Staging and production require a
+remote authenticated SMTP service using STARTTLS and an HTTPS web origin.
+
+To grant platform administrator access to an existing, active, verified account, run this operator-only command after
+the database has been migrated:
+
+```powershell
+vmarket-grant-admin admin@example.com
+```
+
+The command records the privilege grant in the append-only audit log. Admin access cannot be self-registered through the
+API. See `/docs` for the versioned identity, profile, vendor verification, and admin endpoints.
+
 The storage initialization command is safe to repeat. It creates `product-media` and `vendor-documents` (or their configured
 names) without granting anonymous access. The MinIO console is at `http://localhost:9001`; sign in using the local values
 of `VMARKET_MINIO_ACCESS_KEY` and `VMARKET_MINIO_SECRET_KEY` from your `.env`. Do not use subscription credentials here.
@@ -64,6 +84,10 @@ npm run dev
 ```
 
 Open `http://localhost:3000`.
+
+The web app uses `http://localhost:8000/api/v1` by default. Set
+`NEXT_PUBLIC_API_URL` at build time when the API is hosted at a different origin, and configure the backend CORS
+origins and `VMARKET_WEB_BASE_URL` to match the deployed web app.
 
 ## Quality checks
 

@@ -63,7 +63,21 @@ def create_app() -> FastAPI:
         request.state.request_id = request_id
         token = request_id_var.set(request_id)
         try:
-            response = await call_next(request)
+            response: Response
+            origin = request.headers.get("origin")
+            if (
+                request.method in {"POST", "PUT", "PATCH", "DELETE"}
+                and origin is not None
+                and origin not in settings.cors_origins
+            ):
+                response = error_response(
+                    request,
+                    403,
+                    "request_origin_not_allowed",
+                    "The request origin is not allowed.",
+                )
+            else:
+                response = await call_next(request)
         finally:
             request_id_var.reset(token)
         response.headers["X-Request-ID"] = request_id

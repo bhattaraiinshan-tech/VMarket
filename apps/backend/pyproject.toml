@@ -10,15 +10,21 @@ requires-python = ">=3.10"
 dependencies = [
     "alembic>=1.15,<2",
     "asyncpg>=0.30,<1",
+    "email-validator>=2.2,<3",
     "fastapi>=0.115,<1",
     "minio>=7.2,<8",
     "pydantic-settings>=2.8,<3",
+    "python-multipart>=0.0.20,<1",
     "sqlalchemy[asyncio]>=2.0,<3",
     "uvicorn[standard]>=0.34,<1",
 ]
 
+[project.scripts]
+vmarket-grant-admin = "app.identity.bootstrap_admin:main"
+
 [project.optional-dependencies]
 dev = [
+    "aiosqlite>=0.21,<1",
     "httpx>=0.28,<1",
     "mypy>=1.15,<2",
     "pytest>=8.3,<9",

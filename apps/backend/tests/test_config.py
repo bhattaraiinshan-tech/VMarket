@@ -26,6 +26,11 @@ def test_staging_accepts_explicit_remote_services() -> None:
         minio_access_key="market-staging",
         minio_secret_key="a-staging-secret-value",
         minio_secure=True,
+        mail_host="smtp.example.com",
+        mail_username="market-mailer",
+        mail_password="a-staging-mail-password",
+        mail_starttls=True,
+        web_base_url="https://staging.example.com",
         cors_origins=["https://staging.example.com"],
     )
 

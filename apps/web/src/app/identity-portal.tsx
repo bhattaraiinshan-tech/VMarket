@@ -412,21 +412,39 @@ export default function IdentityPortal() {
               Your account
             </h1>
           </div>
-          <button
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
-            disabled={busy}
-            onClick={() =>
-              void runAction(async () => {
-                await request('/auth/logout', { method: 'POST' });
-                setUser(null);
-                setAddresses([]);
-                setApplications([]);
-              })
-            }
-            type="button"
-          >
-            Sign out
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {user.roles.includes('vendor') && (
+              <Link
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+                href="/vendor"
+              >
+                Vendor catalogue
+              </Link>
+            )}
+            {user.roles.includes('admin') && (
+              <Link
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+                href="/admin/catalog"
+              >
+                Catalogue admin
+              </Link>
+            )}
+            <button
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+              disabled={busy}
+              onClick={() =>
+                void runAction(async () => {
+                  await request('/auth/logout', { method: 'POST' });
+                  setUser(null);
+                  setAddresses([]);
+                  setApplications([]);
+                })
+              }
+              type="button"
+            >
+              Sign out
+            </button>
+          </div>
         </header>
 
         {(message || error) && (

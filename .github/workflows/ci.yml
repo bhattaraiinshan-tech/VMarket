@@ -1,0 +1,89 @@
+name: Quality checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/backend/pyproject.toml
+      - name: Install backend
+        run: python -m pip install -e "apps/backend[dev]"
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+      - name: Start PostgreSQL and MinIO
+        run: docker compose up -d --wait --wait-timeout 90
+      - name: Apply database migrations
+        run: python -m alembic -c apps/backend/alembic.ini upgrade head
+      - name: Initialize storage buckets
+        run: python -m app.storage.initialize
+      - name: Verify API and dependency health
+        run: |
+          nohup python -m uvicorn app.main:app --app-dir apps/backend --host 127.0.0.1 --port 8000 > "$RUNNER_TEMP/backend.log" 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:8000/api/v1/health/live > /dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          ready=0
+          for attempt in $(seq 1 30); do
+            status=$(curl --silent --show-error --output "$RUNNER_TEMP/ready.json" --write-out '%{http_code}' http://127.0.0.1:8000/api/v1/health/ready)
+            if [ "$status" = "200" ] && python -c 'import json,sys; sys.exit(0 if all(value == "ok" for value in json.load(open(sys.argv[1]))["dependencies"].values()) else 1)' "$RUNNER_TEMP/ready.json"; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" -eq 1
+      - name: Stop local dependencies
+        if: always()
+        run: docker compose down
+      - name: Test backend
+        run: python -m pytest apps/backend/tests
+      - name: Lint backend
+        run: ruff check apps/backend
+      - name: Check backend formatting
+        run: ruff format --check apps/backend
+      - name: Type-check backend
+        run: mypy --config-file apps/backend/pyproject.toml apps/backend/app
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22.13"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install frontend
+        working-directory: apps/web
+        run: npm ci
+      - name: Test frontend
+        working-directory: apps/web
+        run: npm test
+      - name: Lint frontend
+        working-directory: apps/web
+        run: npm run lint
+      - name: Type-check frontend
+        working-directory: apps/web
+        run: npm run typecheck
+      - name: Check frontend formatting
+        working-directory: apps/web
+        run: npm run format:check
+      - name: Build frontend
+        working-directory: apps/web
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npm run build

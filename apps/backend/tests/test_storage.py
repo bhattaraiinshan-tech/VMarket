@@ -17,7 +17,9 @@ def test_initialize_buckets_is_repeatable(monkeypatch: pytest.MonkeyPatch, exist
     expected = [call("product-media"), call("vendor-documents")]
     assert client.bucket_exists.call_args_list == expected
     assert client.make_bucket.call_args_list == ([] if exists else expected)
-    client.set_bucket_policy.assert_not_called()
+    client.set_bucket_policy.assert_called_once()
+    assert client.set_bucket_policy.call_args.args[0] == "product-media"
+    assert '"s3:GetObject"' in client.set_bucket_policy.call_args.args[1]
 
 
 def test_initialize_buckets_surfaces_access_errors(monkeypatch: pytest.MonkeyPatch) -> None:

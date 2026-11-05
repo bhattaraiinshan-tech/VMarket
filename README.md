@@ -3,13 +3,15 @@
 Vendor's Market is a commerce platform for customers, retail vendors, and wholesale businesses in Nepal. It is built as a
 modular monolith with a Next.js web app and a versioned FastAPI backend.
 
-## Phase 1: Project foundation and Phase 2: Identity and access
+## Phase 1: Project foundation, Phase 2: Identity and access, and Phase 3: Product catalogue
 
 The repository includes a Next.js customer-facing application shell, a FastAPI service, PostgreSQL/PostGIS and MinIO for
 local development, database migrations, structured API errors and logs, dependency health checks, and automated quality
 checks. Identity features include email verification, password recovery, server-side sessions, customer profiles and
 delivery addresses, vendor verification applications with private documents, role-based admin operations, account
-suspension/deactivation, and audit history. Catalogue management and order processing are later-phase work.
+suspension/deactivation, and audit history. Phase 3 adds shop profiles, category and brand management, product attributes
+and variants, public MinIO product images, moderated product listings, searchable and filterable discovery, location-based
+shop discovery, product details, and customer wishlists. Orders and fulfillment remain later-phase work.
 
 ## Prerequisites
 
@@ -69,9 +71,24 @@ vmarket-grant-admin admin@example.com
 The command records the privilege grant in the append-only audit log. Admin access cannot be self-registered through the
 API. See `/docs` for the versioned identity, profile, vendor verification, and admin endpoints.
 
+For local marketplace development, seed 10 approved vendor accounts and 20 approved sample products after migrating
+the database:
+
+```powershell
+python -m app.catalog.seed_demo
+```
+
+The command only runs when `VMARKET_ENVIRONMENT=development` and the database host is localhost. It is safe to repeat
+and refuses to overwrite an existing account's password. The demo vendors can sign in as
+`demo.vendor01@example.com` through `demo.vendor10@example.com`; the shared local-only password is
+`VendorDemo2026!`. These sample credentials are public and must never be used outside local development.
+
 The storage initialization command is safe to repeat. It creates `product-media` and `vendor-documents` (or their configured
-names) without granting anonymous access. The MinIO console is at `http://localhost:9001`; sign in using the local values
-of `VMARKET_MINIO_ACCESS_KEY` and `VMARKET_MINIO_SECRET_KEY` from your `.env`. Do not use subscription credentials here.
+names), and grants anonymous read-only access to the public product-media bucket; vendor documents remain private. Set
+`VMARKET_MINIO_PUBLIC_URL` to the browser-accessible MinIO or CDN origin used to display product photos. Production and
+staging require this public URL to use HTTPS. The MinIO console is at `http://localhost:9001`; sign in using the local
+values of `VMARKET_MINIO_ACCESS_KEY` and `VMARKET_MINIO_SECRET_KEY` from your `.env`. Do not use subscription credentials
+here.
 
 ## Run the web app
 
@@ -84,6 +101,10 @@ npm run dev
 ```
 
 Open `http://localhost:3000`.
+
+The marketplace is at `/marketplace`, vendor shop and product management is at `/vendor`, and authorized administrators
+can manage catalogue taxonomy and moderate listings at `/admin/catalog`. A vendor must have an approved vendor application
+before creating a shop; product submissions remain unpublished until an administrator approves them.
 
 The web app uses `http://localhost:8000/api/v1` by default. Set
 `NEXT_PUBLIC_API_URL` at build time when the API is hosted at a different origin, and configure the backend CORS

@@ -26,6 +26,7 @@ def test_staging_accepts_explicit_remote_services() -> None:
         minio_access_key="market-staging",
         minio_secret_key="a-staging-secret-value",
         minio_secure=True,
+        minio_public_url="https://media.example.com",
         mail_host="smtp.example.com",
         mail_username="market-mailer",
         mail_password="a-staging-mail-password",

@@ -21,6 +21,7 @@ dependencies = [
 
 [project.scripts]
 vmarket-grant-admin = "app.identity.bootstrap_admin:main"
+vmarket-seed-demo = "app.catalog.seed_demo:main"
 
 [project.optional-dependencies]
 dev = [

@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     minio_access_key: str = "vmarket-local"
     minio_secret_key: SecretStr = SecretStr("vmarket-local-secret")
     minio_secure: bool = False
+    minio_public_url: str = "http://localhost:9000"
     minio_public_bucket: str = "product-media"
     minio_private_bucket: str = "vendor-documents"
     mail_host: str = "localhost"
@@ -64,6 +65,27 @@ class Settings(BaseSettings):
         if port is not None and not 1 <= port <= 65535:
             raise ValueError("minio_endpoint port must be between 1 and 65535")
         return value
+
+    @field_validator("minio_public_url")
+    @classmethod
+    def validate_minio_public_url(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            raise ValueError("minio_public_url must contain a valid port") from exc
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+            or parsed.username
+            or parsed.password
+            or (port is not None and not 1 <= port <= 65535)
+        ):
+            raise ValueError("minio_public_url must be an origin without credentials or a path")
+        return value.rstrip("/")
 
     @field_validator("cors_origins")
     @classmethod
@@ -126,6 +148,7 @@ class Settings(BaseSettings):
 
         database = urlsplit(self.database_url)
         minio_host = urlsplit(f"//{self.minio_endpoint}").hostname
+        public_storage = urlsplit(self.minio_public_url)
         if self.debug:
             raise ValueError("debug must be disabled in staging and production")
         if database.hostname in {"localhost", "127.0.0.1", "::1"}:
@@ -134,6 +157,11 @@ class Settings(BaseSettings):
             raise ValueError("staging and production require a non-development database password")
         if minio_host in {"localhost", "127.0.0.1", "::1"}:
             raise ValueError("staging and production require a non-local MinIO endpoint")
+        if (
+            public_storage.hostname in {"localhost", "127.0.0.1", "::1"}
+            or public_storage.scheme != "https"
+        ):
+            raise ValueError("staging and production require an HTTPS public MinIO URL")
         if not self.minio_secure:
             raise ValueError("MinIO TLS must be enabled in staging and production")
         if any(

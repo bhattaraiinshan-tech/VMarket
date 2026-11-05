@@ -5,6 +5,7 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from app.catalog import models as catalog_models  # noqa: F401
 from app.core.config import get_settings
 from app.db.base import Base
 from app.identity import models as identity_models  # noqa: F401

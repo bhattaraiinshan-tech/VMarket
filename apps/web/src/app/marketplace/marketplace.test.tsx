@@ -119,6 +119,9 @@ describe('marketplace', () => {
         expect.objectContaining({ credentials: 'include' }),
       ),
     );
+    await screen.findByRole('button', {
+      name: 'Add Handwoven Basket to wishlist',
+    });
 
     fireEvent.click(
       screen.getByRole('button', { name: 'Add Handwoven Basket to wishlist' }),

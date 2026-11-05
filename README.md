@@ -3,7 +3,7 @@
 Vendor's Market is a commerce platform for customers, retail vendors, and wholesale businesses in Nepal. It is built as a
 modular monolith with a Next.js web app and a versioned FastAPI backend.
 
-## Phase 1: Project foundation, Phase 2: Identity and access, and Phase 3: Product catalogue
+## Implemented phases: Foundation, identity, catalogue, and retail ordering
 
 The repository includes a Next.js customer-facing application shell, a FastAPI service, PostgreSQL/PostGIS and MinIO for
 local development, database migrations, structured API errors and logs, dependency health checks, and automated quality
@@ -11,7 +11,11 @@ checks. Identity features include email verification, password recovery, server-
 delivery addresses, vendor verification applications with private documents, role-based admin operations, account
 suspension/deactivation, and audit history. Phase 3 adds shop profiles, category and brand management, product attributes
 and variants, public MinIO product images, moderated product listings, searchable and filterable discovery, location-based
-shop discovery, product details, and customer wishlists. Orders and fulfillment remain later-phase work.
+shop discovery, product details, and customer wishlists. Retail ordering adds persistent customer carts, server-validated
+checkout, database-locked inventory reservation, vendor-specific fulfillment orders, order history, immutable status
+events, delivery tracking numbers, customer/vendor notifications, invoice records, and cash-on-delivery transactions.
+Customers can cancel before dispatch and request a return within seven days after delivery. A returned cash-on-delivery
+order creates a refund-due ledger entry that the fulfilling vendor records when cash is refunded.
 
 ## Prerequisites
 
@@ -102,9 +106,20 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-The marketplace is at `/marketplace`, vendor shop and product management is at `/vendor`, and authorized administrators
-can manage catalogue taxonomy and moderate listings at `/admin/catalog`. A vendor must have an approved vendor application
-before creating a shop; product submissions remain unpublished until an administrator approves them.
+The marketplace is at `/marketplace`; customers can add products to `/cart`, check out with a saved delivery address,
+and view progress and invoices at `/orders`. Vendor shop and product management is at `/vendor`, with fulfillment
+management at `/vendor/orders`; notifications are at `/notifications`. Authorized administrators can manage catalogue
+taxonomy and moderate listings at `/admin/catalog`. A vendor must have an approved vendor application before creating a
+shop; product submissions remain unpublished until an administrator approves them.
+
+Checkout currently supports cash on delivery. Shipping is a fixed NPR 100 per vendor fulfillment, so a multi-vendor
+cart pays one delivery fee per shop. Prices and totals are calculated from server-side catalogue data using decimal
+currency values. Stock is atomically reserved during checkout and returned to availability when a fulfillment is
+cancelled or a vendor accepts a return. Apply the Phase 4 schema with the normal migration command:
+
+```powershell
+alembic -c apps\backend\alembic.ini upgrade head
+```
 
 The web app uses `http://localhost:8000/api/v1` by default. Set
 `NEXT_PUBLIC_API_URL` at build time when the API is hosted at a different origin, and configure the backend CORS

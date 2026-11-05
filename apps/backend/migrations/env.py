@@ -9,6 +9,7 @@ from app.catalog import models as catalog_models  # noqa: F401
 from app.core.config import get_settings
 from app.db.base import Base
 from app.identity import models as identity_models  # noqa: F401
+from app.orders import models as orders_models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

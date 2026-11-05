@@ -3,13 +3,19 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
-import { Product, ProductPage, requestApi } from '@/lib/api';
+import { Cart, Product, ProductPage, requestApi } from '@/lib/api';
 
 export default function ProductDetails({ slug }: { slug: string }) {
   const [product, setProduct] = useState<Product | null>(null);
   const [related, setRelated] = useState<Product[]>([]);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  const [selectedVariantId, setSelectedVariantId] = useState('');
+  const [quantity, setQuantity] = useState(1);
+  const [cartMessage, setCartMessage] = useState('');
+  const selectedVariant = product?.variants.find(
+    (variant) => variant.id === selectedVariantId,
+  );
 
   useEffect(() => {
     let active = true;
@@ -17,6 +23,7 @@ export default function ProductDetails({ slug }: { slug: string }) {
       .then(async (result) => {
         if (!active) return;
         setProduct(result);
+        setSelectedVariantId(result.variants[0]?.id ?? '');
         const offers = await requestApi<ProductPage>(
           `/catalog/products?category_id=${encodeURIComponent(result.category_id)}&sort=price_asc&page_size=8`,
         );
@@ -51,6 +58,31 @@ export default function ProductDetails({ slug }: { slug: string }) {
         cause instanceof Error
           ? cause.message
           : 'Wishlist could not be updated.',
+      );
+    }
+  }
+
+  async function addToCart() {
+    if (!product) return;
+    setError('');
+    setCartMessage('');
+    try {
+      await requestApi<Cart>('/me/cart/items', {
+        method: 'POST',
+        body: JSON.stringify({
+          product_id: product.id,
+          variant_id: selectedVariantId || null,
+          quantity,
+        }),
+      });
+      setCartMessage(
+        `${quantity} item${quantity === 1 ? '' : 's'} added to your cart.`,
+      );
+    } catch (cause: unknown) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'The item could not be added to your cart.',
       );
     }
   }
@@ -124,7 +156,7 @@ export default function ProductDetails({ slug }: { slug: string }) {
             {product.name}
           </h1>
           <p className="mt-4 text-2xl font-bold text-slate-950">
-            NPR {product.price}
+            NPR {selectedVariant?.price ?? product.price}
           </p>
           <p className="mt-2 text-sm text-slate-600">
             {product.available ? 'In stock' : 'Currently unavailable'}
@@ -147,6 +179,59 @@ export default function ProductDetails({ slug }: { slug: string }) {
             ))}
           </dl>
           <div className="mt-6 flex flex-wrap items-center gap-3">
+            {product.variants.length > 0 && (
+              <label className="text-sm font-semibold text-slate-800">
+                Option
+                <select
+                  className="ml-2 rounded-lg border border-slate-300 bg-white px-3 py-2"
+                  onChange={(event) => setSelectedVariantId(event.target.value)}
+                  value={selectedVariantId}
+                >
+                  {product.variants.map((variant) => (
+                    <option
+                      disabled={variant.stock < 1}
+                      key={variant.id}
+                      value={variant.id}
+                    >
+                      {variant.name} · NPR {variant.price} · {variant.stock}{' '}
+                      available
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label className="text-sm font-semibold text-slate-800">
+              Quantity
+              <input
+                className="ml-2 w-20 rounded-lg border border-slate-300 px-3 py-2"
+                max={
+                  product.variants.length > 0
+                    ? (product.variants.find(
+                        (item) => item.id === selectedVariantId,
+                      )?.stock ?? 1)
+                    : product.stock
+                }
+                min={1}
+                onChange={(event) => setQuantity(Number(event.target.value))}
+                type="number"
+                value={quantity}
+              />
+            </label>
+            <button
+              className="rounded-lg bg-emerald-800 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={
+                !product.available ||
+                quantity < 1 ||
+                (product.variants.length > 0 &&
+                  (product.variants.find(
+                    (item) => item.id === selectedVariantId,
+                  )?.stock ?? 0) < 1)
+              }
+              onClick={() => void addToCart()}
+              type="button"
+            >
+              Add to cart
+            </button>
             <button
               className="rounded-lg bg-emerald-800 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-900"
               onClick={() => void toggleWishlist()}
@@ -160,7 +245,18 @@ export default function ProductDetails({ slug }: { slug: string }) {
             >
               Visit {product.shop_name}
             </Link>
+            <Link
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800"
+              href="/cart"
+            >
+              View cart
+            </Link>
           </div>
+          {cartMessage && (
+            <p className="mt-3 text-sm text-emerald-800" role="status">
+              {cartMessage}
+            </p>
+          )}
           {product.variants.length > 0 && (
             <section className="mt-8 border-t border-slate-200 pt-5">
               <h2 className="font-semibold text-slate-900">

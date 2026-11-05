@@ -125,3 +125,108 @@ export type Shop = {
   distance_km: number | null;
   created_at: string;
 };
+
+export type DeliveryAddress = {
+  id: string;
+  label: string;
+  recipient_name: string;
+  phone: string;
+  province: string;
+  city: string;
+  area: string | null;
+  street_address: string;
+  postal_code: string | null;
+  is_default: boolean;
+  created_at: string;
+};
+
+export type CartItem = {
+  id: string;
+  product_id: string;
+  variant_id: string | null;
+  product_name: string;
+  variant_name: string | null;
+  shop_id: string;
+  shop_name: string;
+  unit_price: string;
+  quantity: number;
+  available_stock: number;
+  line_total: string;
+};
+
+export type Cart = {
+  items: CartItem[];
+  item_count: number;
+  subtotal: string;
+};
+
+export type OrderItem = {
+  id: string;
+  product_id: string | null;
+  variant_id: string | null;
+  product_name: string;
+  variant_name: string | null;
+  sku: string;
+  quantity: number;
+  unit_price: string;
+  line_total: string;
+};
+
+export type OrderEvent = {
+  id: string;
+  from_status: string | null;
+  to_status: string;
+  note: string | null;
+  created_at: string;
+};
+
+export type PaymentTransaction = {
+  id: string;
+  transaction_type: 'charge' | 'refund';
+  method: 'cash_on_delivery';
+  status: 'pending' | 'collected' | 'cancelled' | 'refund_due' | 'refunded';
+  amount: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FulfillmentOrder = {
+  id: string;
+  fulfillment_number: string;
+  shop_id: string | null;
+  shop_name: string;
+  status: string;
+  subtotal: string;
+  shipping_fee: string;
+  tracking_number: string | null;
+  created_at: string;
+  updated_at: string;
+  items: OrderItem[];
+  events: OrderEvent[];
+  transactions: PaymentTransaction[];
+};
+
+export type Order = {
+  id: string;
+  order_number: string;
+  invoice_number: string;
+  status: string;
+  payment_method: 'cash_on_delivery';
+  shipping_address: Record<string, string | null>;
+  subtotal: string;
+  shipping_total: string;
+  total: string;
+  created_at: string;
+  updated_at: string;
+  fulfillments: FulfillmentOrder[];
+};
+
+export type Notification = {
+  id: string;
+  order_id: string | null;
+  fulfillment_order_id: string | null;
+  title: string;
+  message: string;
+  read_at: string | null;
+  created_at: string;
+};

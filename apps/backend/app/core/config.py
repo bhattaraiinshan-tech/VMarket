@@ -142,6 +142,16 @@ class Settings(BaseSettings):
         return value.rstrip("/")
 
     @model_validator(mode="after")
+    def validate_storage_buckets(self) -> "Settings":
+        if (
+            not self.minio_public_bucket.strip()
+            or not self.minio_private_bucket.strip()
+            or self.minio_public_bucket.casefold() == self.minio_private_bucket.casefold()
+        ):
+            raise ValueError("MinIO public and private buckets must be non-empty and distinct")
+        return self
+
+    @model_validator(mode="after")
     def validate_deployment_settings(self) -> "Settings":
         if self.environment not in {"staging", "production"}:
             return self

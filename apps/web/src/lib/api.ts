@@ -287,3 +287,158 @@ export type SupportTicket = {
   created_at: string;
   updated_at: string;
 };
+
+export type WholesalePriceTier = {
+  id: string;
+  minimum_quantity: number;
+  unit_price: string;
+};
+
+export type WholesaleListing = {
+  id: string;
+  shop_id: string;
+  shop_name: string;
+  shop_slug: string;
+  city: string;
+  province: string;
+  product_id: string;
+  product_name: string;
+  product_description: string;
+  product_sku: string;
+  minimum_order_quantity: number;
+  available_quantity: number;
+  unit_label: string;
+  is_active: boolean;
+  price_tiers: WholesalePriceTier[];
+  created_at: string;
+};
+
+export type TradeQuote = {
+  id: string;
+  revision: number;
+  quantity: number;
+  unit_price: string;
+  delivery_terms: string;
+  valid_until: string | null;
+  status: 'pending' | 'accepted' | 'rejected' | 'superseded';
+  created_at: string;
+};
+
+export type TradeRFQ = {
+  id: string;
+  buyer_shop_id: string;
+  buyer_shop_name: string;
+  seller_shop_id: string;
+  seller_shop_name: string;
+  listing_id: string;
+  product_name: string;
+  quantity: number;
+  requested_delivery_date: string | null;
+  delivery_terms: string;
+  message: string;
+  status: 'open' | 'quoted' | 'accepted' | 'declined' | 'cancelled';
+  quotes: TradeQuote[];
+  negotiation_history: {
+    id: string;
+    quote_id: string | null;
+    actor_shop_id: string;
+    note: string;
+    created_at: string;
+  }[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type TradeDocument = {
+  id: string;
+  purchase_order_id: string | null;
+  transfer_id: string | null;
+  uploader_shop_id: string;
+  original_filename: string;
+  content_type: string;
+  file_size: number;
+  uploaded_at: string;
+};
+
+export type TradePurchaseOrder = {
+  id: string;
+  rfq_id: string;
+  quote_id: string;
+  buyer_shop_id: string;
+  buyer_shop_name: string;
+  seller_shop_id: string;
+  seller_shop_name: string;
+  listing_id: string;
+  product_name: string;
+  order_number: string;
+  quantity: number;
+  unit_price: string;
+  total: string;
+  delivery_terms: string;
+  status: 'placed' | 'confirmed' | 'shipped' | 'received' | 'cancelled';
+  business_review_submitted: boolean;
+  events: {
+    id: string;
+    actor_shop_id: string | null;
+    from_status: string | null;
+    to_status: string;
+    note: string | null;
+    created_at: string;
+  }[];
+  documents: TradeDocument[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type TradeStockTransfer = {
+  id: string;
+  source_shop_id: string;
+  source_shop_name: string;
+  destination_shop_id: string;
+  destination_shop_name: string;
+  source_product_id: string;
+  source_product_name: string;
+  destination_product_id: string;
+  destination_product_name: string;
+  quantity: number;
+  delivery_terms: string;
+  status:
+    | 'requested'
+    | 'approved'
+    | 'rejected'
+    | 'shipped'
+    | 'received'
+    | 'cancelled';
+  events: {
+    id: string;
+    actor_shop_id: string | null;
+    from_status: string | null;
+    to_status: string;
+    note: string | null;
+    created_at: string;
+  }[];
+  documents: TradeDocument[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type TradeBusinessReview = {
+  id: string;
+  reviewer_shop_id: string;
+  supplier_shop_id: string;
+  rating: number;
+  body: string;
+  created_at: string;
+};
+
+export type TradeSupplier = {
+  shop_id: string;
+  shop_name: string;
+  shop_slug: string;
+  city: string;
+  province: string;
+  active_listing_count: number;
+  completed_trade_count: number;
+  average_rating: string | null;
+  reviews: TradeBusinessReview[];
+};

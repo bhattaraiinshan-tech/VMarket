@@ -46,3 +46,8 @@ def test_database_url_rejects_sync_drivers() -> None:
 def test_cors_rejects_wildcard_origins() -> None:
     with pytest.raises(ValidationError, match="explicit origins"):
         Settings(_env_file=None, cors_origins=["*"])
+
+
+def test_minio_public_and_private_buckets_must_be_distinct() -> None:
+    with pytest.raises(ValidationError, match="must be non-empty and distinct"):
+        Settings(_env_file=None, minio_private_bucket="PRODUCT-MEDIA")

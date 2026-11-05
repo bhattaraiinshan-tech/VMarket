@@ -3,7 +3,7 @@
 Vendor's Market is a commerce platform for customers, retail vendors, and wholesale businesses in Nepal. It is built as a
 modular monolith with a Next.js web app and a versioned FastAPI backend.
 
-## Implemented phases: Foundation through communication and reviews
+## Implemented phases: Foundation through wholesale and vendor trade
 
 The repository includes a Next.js customer-facing application shell, a FastAPI service, PostgreSQL/PostGIS and MinIO for
 local development, database migrations, structured API errors and logs, dependency health checks, and automated quality
@@ -20,7 +20,11 @@ Phase 5 adds customer-to-vendor conversations with durable message history, unre
 WebSocket updates, and optional product/order context. Customers can review products only after a related fulfillment is
 delivered; reviews enter an administrator moderation queue, can be reported, and support vendor responses. Customers and
 vendors can escalate order issues through support tickets and disputes, with administrator responses, notifications, and
-audit history.
+audit history. Phase 6 adds shop-scoped wholesale listings with quantity price tiers and minimums,
+supplier discovery, RFQs with revisioned quotes and negotiation history, purchase orders with
+trade-specific status events, concurrent stock reservation, shop-to-shop stock transfers with
+receipt confirmation, private MinIO trade documents, supplier performance history, and verified
+business reviews after receipt.
 
 ## Prerequisites
 
@@ -92,8 +96,18 @@ and refuses to overwrite an existing account's password. The demo vendors can si
 `demo.vendor01@example.com` through `demo.vendor10@example.com`; the shared local-only password is
 `VendorDemo2026!`. These sample credentials are public and must never be used outside local development.
 
+After seeding the catalogue demo data, create 20 wholesale listings and sample trade workflows (RFQs, quotes,
+purchase orders, transfers, and supplier reviews) with:
+
+```powershell
+python -m app.trading.seed_demo
+```
+
+This command has the same localhost/development-only guard and is safe to repeat.
+
 The storage initialization command is safe to repeat. It creates `product-media` and `vendor-documents` (or their configured
-names), and grants anonymous read-only access to the public product-media bucket; vendor documents remain private. Set
+names), and grants anonymous read-only access to the public product-media bucket; vendor documents remain private. The
+public and private bucket names must be distinct. Set
 `VMARKET_MINIO_PUBLIC_URL` to the browser-accessible MinIO or CDN origin used to display product photos. Production and
 staging require this public URL to use HTTPS. The MinIO console is at `http://localhost:9001`; sign in using the local
 values of `VMARKET_MINIO_ACCESS_KEY` and `VMARKET_MINIO_SECRET_KEY` from your `.env`. Do not use subscription credentials
@@ -113,7 +127,8 @@ Open `http://localhost:3000`.
 
 The marketplace is at `/marketplace`; customers can add products to `/cart`, check out with a saved delivery address,
 and view progress and invoices at `/orders`. Vendor shop and product management is at `/vendor`, with fulfillment
-management at `/vendor/orders`; vendor reviews are at `/vendor/reviews`. Customers and vendors can use `/messages` for
+management at `/vendor/orders`, reviews at `/vendor/reviews`, and wholesale, RFQ, purchase order, stock transfer, and
+trade document workflows at `/vendor/trade`. Customers and vendors can use `/messages` for
 persisted conversations, `/support` for support requests, and `/notifications` for order, message, review-response, and
 support updates. Authorized administrators can manage catalogue taxonomy and moderate listings at `/admin/catalog`, and
 review reports, pending reviews, support tickets, and disputes at `/admin/communications`. A vendor must have an
@@ -129,10 +144,11 @@ cancelled or a vendor accepts a return. Apply the latest schema with the normal 
 python -m alembic -c apps\backend\alembic.ini upgrade head
 ```
 
-After pulling schema changes, run this command before using the updated features. Phase 5 requires revision
-`0005_communications_reviews`; verify the installed revision with
+After pulling schema changes, run this command before using the updated features. Phase 6 requires revision
+`0006_vendor_trade` (after `0005_communications_reviews`); verify the installed revision with
 `python -m alembic -c apps\backend\alembic.ini current`. Missing migrations can cause HTTP 500 responses on
-reviews, conversations, and support tickets. Unexpected API errors are logged server-side and return sanitized JSON
+trade listings, quotes, purchase orders, and transfers, as well as reviews, conversations, and support tickets.
+Unexpected API errors are logged server-side and return sanitized JSON
 with CORS headers for configured origins.
 
 The web app uses `http://localhost:8000/api/v1` by default. Set

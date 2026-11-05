@@ -42,13 +42,6 @@ def create_app() -> FastAPI:
         debug=settings.debug,
         lifespan=lifespan,
     )
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
-    )
     app.include_router(api_router, prefix="/api/v1")
     app.add_exception_handler(APIError, handle_api_error)
     app.add_exception_handler(StarletteHTTPException, handle_http_error)
@@ -78,6 +71,8 @@ def create_app() -> FastAPI:
                 )
             else:
                 response = await call_next(request)
+        except Exception as exc:
+            response = await handle_unexpected_error(request, exc)
         finally:
             request_id_var.reset(token)
         response.headers["X-Request-ID"] = request_id
@@ -98,6 +93,14 @@ def create_app() -> FastAPI:
             "internal_server_error",
             "An unexpected error occurred.",
         )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    )
 
     return app
 

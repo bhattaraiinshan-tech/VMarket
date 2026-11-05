@@ -202,6 +202,12 @@ export default function VendorOrders() {
                   ))}
                 </ul>
                 <div className="mt-4 flex flex-wrap items-end gap-3">
+                  <Link
+                    className="text-sm font-semibold text-emerald-800 underline"
+                    href={`/support?kind=dispute&orderId=${encodeURIComponent(order.order_id)}`}
+                  >
+                    Escalate an order dispute
+                  </Link>
                   {order.status === 'pending' && (
                     <>
                       {button(order, 'Confirm order', 'confirmed')}

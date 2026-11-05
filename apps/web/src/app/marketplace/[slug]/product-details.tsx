@@ -1,14 +1,25 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
-import { Cart, Product, ProductPage, requestApi } from '@/lib/api';
+import {
+  Cart,
+  Product,
+  ProductPage,
+  ProductReview,
+  requestApi,
+} from '@/lib/api';
 
 export default function ProductDetails({ slug }: { slug: string }) {
+  const router = useRouter();
   const [product, setProduct] = useState<Product | null>(null);
   const [related, setRelated] = useState<Product[]>([]);
+  const [reviews, setReviews] = useState<ProductReview[]>([]);
   const [error, setError] = useState('');
+  const [reviewError, setReviewError] = useState('');
+  const [reportedReviewIds, setReportedReviewIds] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
   const [selectedVariantId, setSelectedVariantId] = useState('');
   const [quantity, setQuantity] = useState(1);
@@ -32,6 +43,10 @@ export default function ProductDetails({ slug }: { slug: string }) {
             offers.items.filter((item) => item.id !== result.id).slice(0, 4),
           );
         }
+        const productReviews = await requestApi<ProductReview[]>(
+          `/catalog/products/${result.id}/reviews`,
+        );
+        if (active) setReviews(productReviews);
       })
       .catch((cause: unknown) =>
         setError(
@@ -83,6 +98,47 @@ export default function ProductDetails({ slug }: { slug: string }) {
         cause instanceof Error
           ? cause.message
           : 'The item could not be added to your cart.',
+      );
+    }
+  }
+
+  async function startConversation() {
+    if (!product) return;
+    setReviewError('');
+    try {
+      const conversation = await requestApi<{ id: string }>(
+        '/me/conversations',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            shop_id: product.shop_id,
+            product_id: product.id,
+          }),
+        },
+      );
+      router.push(`/messages/${conversation.id}`);
+    } catch (cause: unknown) {
+      setReviewError(
+        cause instanceof Error
+          ? cause.message
+          : 'A conversation could not be started.',
+      );
+    }
+  }
+
+  async function reportReview(reviewId: string) {
+    setReviewError('');
+    try {
+      await requestApi<void>(`/me/reviews/${reviewId}/reports`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: 'Inappropriate or misleading content' }),
+      });
+      setReportedReviewIds((current) => [...current, reviewId]);
+    } catch (cause: unknown) {
+      setReviewError(
+        cause instanceof Error
+          ? cause.message
+          : 'The review could not be reported.',
       );
     }
   }
@@ -245,6 +301,13 @@ export default function ProductDetails({ slug }: { slug: string }) {
             >
               Visit {product.shop_name}
             </Link>
+            <button
+              className="rounded-lg border border-emerald-800 px-4 py-2 text-sm font-semibold text-emerald-900"
+              onClick={() => void startConversation()}
+              type="button"
+            >
+              Message vendor
+            </button>
             <Link
               className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800"
               href="/cart"
@@ -283,6 +346,95 @@ export default function ProductDetails({ slug }: { slug: string }) {
             </section>
           )}
         </div>
+      </section>
+      <section
+        aria-labelledby="product-reviews-heading"
+        className="mt-12 border-t border-slate-200 pt-8"
+      >
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2
+              className="text-2xl font-bold text-slate-950"
+              id="product-reviews-heading"
+            >
+              Verified-purchase reviews
+            </h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Reviews are accepted only for delivered purchases.
+            </p>
+          </div>
+          {reviews.length > 0 && (
+            <p className="font-semibold text-slate-800">
+              {(
+                reviews.reduce((total, review) => total + review.rating, 0) /
+                reviews.length
+              ).toFixed(1)}{' '}
+              / 5 · {reviews.length}{' '}
+              {reviews.length === 1 ? 'review' : 'reviews'}
+            </p>
+          )}
+        </div>
+        {reviewError && (
+          <p
+            className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-800"
+            role="alert"
+          >
+            {reviewError}
+          </p>
+        )}
+        {reviews.length ? (
+          <ul className="mt-5 space-y-3">
+            {reviews.map((review) => (
+              <li
+                className="rounded-xl border border-slate-200 bg-white p-5"
+                key={review.id}
+              >
+                <div className="flex flex-wrap justify-between gap-2">
+                  <h3 className="font-semibold text-slate-950">
+                    {review.title}
+                  </h3>
+                  <span
+                    aria-label={`${review.rating} out of 5 stars`}
+                    className="font-semibold text-amber-700"
+                  >
+                    {review.rating} / 5
+                  </span>
+                </div>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
+                  {review.body}
+                </p>
+                <p className="mt-3 text-xs text-slate-500">
+                  {review.customer_name} ·{' '}
+                  {new Date(review.created_at).toLocaleDateString()}
+                </p>
+                {review.vendor_response && (
+                  <div className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm">
+                    <p className="font-semibold text-emerald-950">
+                      Vendor response
+                    </p>
+                    <p className="mt-1 whitespace-pre-wrap text-emerald-900">
+                      {review.vendor_response}
+                    </p>
+                  </div>
+                )}
+                <button
+                  className="mt-3 text-xs font-semibold text-slate-600 underline disabled:no-underline disabled:opacity-60"
+                  disabled={reportedReviewIds.includes(review.id)}
+                  onClick={() => void reportReview(review.id)}
+                  type="button"
+                >
+                  {reportedReviewIds.includes(review.id)
+                    ? 'Reported'
+                    : 'Report review'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-5 rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
+            No published reviews yet.
+          </p>
+        )}
       </section>
       {related.length > 0 && (
         <section className="mt-14 border-t border-slate-200 pt-8">

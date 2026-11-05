@@ -63,6 +63,7 @@ export default function NotificationsPage() {
         <div className="flex gap-4 text-sm font-semibold text-emerald-800">
           <Link href="/orders">Customer orders</Link>
           <Link href="/vendor/orders">Vendor fulfillment</Link>
+          <Link href="/messages">Messages</Link>
         </div>
       </header>
       {error && (
@@ -99,6 +100,14 @@ export default function NotificationsPage() {
                   <p className="mt-2 text-xs text-slate-500">
                     {new Date(notification.created_at).toLocaleString()}
                   </p>
+                  {notification.conversation_id && (
+                    <Link
+                      className="mt-2 inline-block text-sm font-semibold text-emerald-800 underline"
+                      href={`/messages/${notification.conversation_id}`}
+                    >
+                      Open conversation
+                    </Link>
+                  )}
                 </div>
                 {!notification.read_at && (
                   <button

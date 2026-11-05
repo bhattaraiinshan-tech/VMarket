@@ -124,11 +124,15 @@ async def test_unexpected_errors_are_sanitized_and_logged(
         transport=ASGITransport(app=test_app, raise_app_exceptions=False),
         base_url="http://test",
     ) as client:
-        response = await client.get("/api/v1/test/failure")
+        response = await client.get(
+            "/api/v1/test/failure", headers={"Origin": "http://localhost:3000"}
+        )
 
     assert response.status_code == 500
     assert response.json()["error"]["code"] == "internal_server_error"
     assert response.json()["error"]["message"] == "An unexpected error occurred."
     assert "sensitive connection detail" not in response.text
     assert response.headers["X-Request-ID"] == response.json()["request_id"]
+    assert response.headers["Access-Control-Allow-Origin"] == "http://localhost:3000"
+    assert response.headers["Access-Control-Allow-Credentials"] == "true"
     assert any(record.getMessage() == "Unhandled request error" for record in caplog.records)

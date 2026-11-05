@@ -559,12 +559,20 @@ export default function VendorCatalogue() {
             Manage your shop profile and submit listings for review.
           </p>
         </div>
-        <Link
-          className="text-sm font-semibold text-emerald-800"
-          href="/marketplace"
-        >
-          Browse marketplace
-        </Link>
+        <div className="flex flex-wrap gap-4">
+          <Link
+            className="text-sm font-semibold text-emerald-800"
+            href="/vendor/orders"
+          >
+            Fulfillment orders
+          </Link>
+          <Link
+            className="text-sm font-semibold text-emerald-800"
+            href="/marketplace"
+          >
+            Browse marketplace
+          </Link>
+        </div>
       </header>
       {(message || error) && (
         <p

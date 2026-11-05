@@ -239,12 +239,32 @@ export default function Marketplace() {
             Shop approved local listings and find vendors near you.
           </p>
         </div>
-        <Link
-          className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-white"
-          href="/vendor"
-        >
-          Vendor workspace
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-white"
+            href="/vendor"
+          >
+            Vendor workspace
+          </Link>
+          <Link
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-white"
+            href="/cart"
+          >
+            Cart
+          </Link>
+          <Link
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-white"
+            href="/orders"
+          >
+            Orders
+          </Link>
+          <Link
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-white"
+            href="/notifications"
+          >
+            Notifications
+          </Link>
+        </div>
       </header>
 
       {error && (

@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 import { Order, requestApi } from '@/lib/api';
@@ -18,10 +19,17 @@ type Invoice = {
 };
 
 export default function OrderDetails({ orderId }: { orderId: string }) {
+  const router = useRouter();
   const [order, setOrder] = useState<Order | null>(null);
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
+  const [reviewItemId, setReviewItemId] = useState('');
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewTitle, setReviewTitle] = useState('');
+  const [reviewBody, setReviewBody] = useState('');
+  const [reviewedItemIds, setReviewedItemIds] = useState<string[]>([]);
+  const [reviewMessage, setReviewMessage] = useState('');
 
   useEffect(() => {
     void requestApi<Order>(`/me/orders/${encodeURIComponent(orderId)}`)
@@ -74,6 +82,56 @@ export default function OrderDetails({ orderId }: { orderId: string }) {
         cause instanceof Error
           ? cause.message
           : 'The invoice could not be loaded.',
+      );
+    }
+  }
+
+  async function submitReview(itemId: string) {
+    setError('');
+    setReviewMessage('');
+    try {
+      await requestApi('/me/reviews', {
+        method: 'POST',
+        body: JSON.stringify({
+          order_item_id: itemId,
+          rating: reviewRating,
+          title: reviewTitle,
+          body: reviewBody,
+        }),
+      });
+      setReviewedItemIds((current) => [...current, itemId]);
+      setReviewItemId('');
+      setReviewTitle('');
+      setReviewBody('');
+      setReviewMessage(
+        'Thank you. Your verified-purchase review is awaiting moderation.',
+      );
+    } catch (cause: unknown) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'The review could not be submitted.',
+      );
+    }
+  }
+
+  async function messageVendor(shopId: string) {
+    if (!order) return;
+    setError('');
+    try {
+      const conversation = await requestApi<{ id: string }>(
+        '/me/conversations',
+        {
+          method: 'POST',
+          body: JSON.stringify({ shop_id: shopId, order_id: order.id }),
+        },
+      );
+      router.push(`/messages/${conversation.id}`);
+    } catch (cause: unknown) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'The vendor conversation could not be opened.',
       );
     }
   }
@@ -193,6 +251,12 @@ export default function OrderDetails({ orderId }: { orderId: string }) {
               >
                 Notifications
               </Link>
+              <Link
+                className="text-sm font-semibold text-emerald-800 underline"
+                href={`/support?kind=dispute&orderId=${encodeURIComponent(order.id)}`}
+              >
+                Get help with this order
+              </Link>
             </div>
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm">
@@ -237,22 +301,123 @@ export default function OrderDetails({ orderId }: { orderId: string }) {
                       </span>
                     </p>
                   )}
+                  {fulfillment.shop_id && (
+                    <button
+                      className="mt-3 text-sm font-semibold text-emerald-800 underline"
+                      onClick={() => {
+                        if (fulfillment.shop_id) {
+                          void messageVendor(fulfillment.shop_id);
+                        }
+                      }}
+                      type="button"
+                    >
+                      Message this vendor about the order
+                    </button>
+                  )}
                   <ul className="mt-3 space-y-2 border-t border-slate-100 pt-3">
                     {fulfillment.items.map((item) => (
                       <li
-                        className="flex justify-between gap-4 text-sm"
+                        className="rounded-lg border-b border-slate-100 pb-3 text-sm last:border-0"
                         key={item.id}
                       >
-                        <span>
-                          {item.product_name}
-                          {item.variant_name
-                            ? ` · ${item.variant_name}`
-                            : ''} × {item.quantity}
-                        </span>
-                        <span>NPR {item.line_total}</span>
+                        <div className="flex justify-between gap-4">
+                          <span>
+                            {item.product_name}
+                            {item.variant_name
+                              ? ` · ${item.variant_name}`
+                              : ''}{' '}
+                            × {item.quantity}
+                          </span>
+                          <span>NPR {item.line_total}</span>
+                        </div>
+                        {fulfillment.status === 'delivered' &&
+                          item.product_id &&
+                          !reviewedItemIds.includes(item.id) && (
+                            <div className="mt-2">
+                              {reviewItemId === item.id ? (
+                                <form
+                                  className="grid gap-2 rounded-lg bg-slate-50 p-3"
+                                  onSubmit={(event) => {
+                                    event.preventDefault();
+                                    void submitReview(item.id);
+                                  }}
+                                >
+                                  <label className="text-xs font-semibold">
+                                    Rating
+                                    <select
+                                      className="ml-2 rounded border border-slate-300 p-1"
+                                      onChange={(event) =>
+                                        setReviewRating(
+                                          Number(event.target.value),
+                                        )
+                                      }
+                                      value={reviewRating}
+                                    >
+                                      {[5, 4, 3, 2, 1].map((rating) => (
+                                        <option key={rating} value={rating}>
+                                          {rating} / 5
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <input
+                                    aria-label="Review title"
+                                    className="rounded border border-slate-300 p-2"
+                                    maxLength={120}
+                                    onChange={(event) =>
+                                      setReviewTitle(event.target.value)
+                                    }
+                                    placeholder="Review title"
+                                    required
+                                    value={reviewTitle}
+                                  />
+                                  <textarea
+                                    aria-label="Review"
+                                    className="rounded border border-slate-300 p-2"
+                                    maxLength={3000}
+                                    onChange={(event) =>
+                                      setReviewBody(event.target.value)
+                                    }
+                                    placeholder="Share your experience"
+                                    required
+                                    rows={3}
+                                    value={reviewBody}
+                                  />
+                                  <div className="flex gap-3">
+                                    <button
+                                      className="font-semibold text-emerald-800 underline"
+                                      type="submit"
+                                    >
+                                      Submit verified review
+                                    </button>
+                                    <button
+                                      className="text-slate-600 underline"
+                                      onClick={() => setReviewItemId('')}
+                                      type="button"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </form>
+                              ) : (
+                                <button
+                                  className="text-xs font-semibold text-emerald-800 underline"
+                                  onClick={() => setReviewItemId(item.id)}
+                                  type="button"
+                                >
+                                  Write a verified-purchase review
+                                </button>
+                              )}
+                            </div>
+                          )}
                       </li>
                     ))}
                   </ul>
+                  {reviewMessage && (
+                    <p className="mt-3 text-sm text-emerald-800" role="status">
+                      {reviewMessage}
+                    </p>
+                  )}
                   <ol
                     aria-label="Fulfillment history"
                     className="mt-4 space-y-3 border-l-2 border-emerald-200 pl-4"

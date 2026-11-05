@@ -184,6 +184,9 @@ class OrderNotification(Base):
     fulfillment_order_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("fulfillment_orders.id", ondelete="SET NULL")
     )
+    conversation_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("conversations.id", ondelete="SET NULL")
+    )
     title: Mapped[str] = mapped_column(String(160))
     message: Mapped[str] = mapped_column(String(500))
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

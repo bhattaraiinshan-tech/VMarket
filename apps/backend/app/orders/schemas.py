@@ -88,6 +88,7 @@ class PaymentTransactionRead(BaseModel):
 
 class FulfillmentOrderRead(BaseModel):
     id: UUID
+    order_id: UUID
     fulfillment_number: str
     shop_id: UUID | None
     shop_name: str
@@ -151,6 +152,7 @@ class NotificationRead(BaseModel):
     id: UUID
     order_id: UUID | None
     fulfillment_order_id: UUID | None
+    conversation_id: UUID | None
     title: str
     message: str
     read_at: datetime | None

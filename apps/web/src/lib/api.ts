@@ -1,4 +1,4 @@
-const API_BASE_URL =
+export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api/v1';
 
 export class ApiError extends Error {
@@ -192,6 +192,7 @@ export type PaymentTransaction = {
 
 export type FulfillmentOrder = {
   id: string;
+  order_id: string;
   fulfillment_number: string;
   shop_id: string | null;
   shop_name: string;
@@ -225,8 +226,64 @@ export type Notification = {
   id: string;
   order_id: string | null;
   fulfillment_order_id: string | null;
+  conversation_id: string | null;
   title: string;
   message: string;
   read_at: string | null;
   created_at: string;
+};
+
+export type ConversationMessage = {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  content: string;
+  read_at: string | null;
+  created_at: string;
+};
+
+export type Conversation = {
+  id: string;
+  shop_id: string;
+  shop_owner_id: string;
+  shop_name: string;
+  customer_id: string;
+  customer_name: string;
+  current_user_id: string;
+  product_id: string | null;
+  product_name: string | null;
+  order_id: string | null;
+  unread_count: number;
+  last_message: ConversationMessage | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProductReview = {
+  id: string;
+  product_id: string;
+  product_name: string;
+  order_item_id: string;
+  customer_name: string;
+  rating: number;
+  title: string;
+  body: string;
+  moderation_status: 'pending' | 'visible' | 'hidden';
+  vendor_response: string | null;
+  created_at: string;
+  vendor_responded_at: string | null;
+};
+
+export type SupportTicket = {
+  id: string;
+  created_by_id: string;
+  order_id: string | null;
+  kind: 'support' | 'dispute';
+  subject: string;
+  body: string;
+  status: 'open' | 'in_progress' | 'resolved' | 'closed';
+  admin_response: string | null;
+  assigned_admin_id: string | null;
+  created_at: string;
+  updated_at: string;
 };

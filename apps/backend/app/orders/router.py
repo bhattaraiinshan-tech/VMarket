@@ -156,6 +156,7 @@ async def _fulfillment_read(
     )
     return FulfillmentOrderRead(
         id=fulfillment.id,
+        order_id=fulfillment.order_id,
         fulfillment_number=fulfillment.fulfillment_number,
         shop_id=fulfillment.shop_id,
         shop_name=fulfillment.shop_name,

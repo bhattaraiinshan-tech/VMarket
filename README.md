@@ -3,7 +3,7 @@
 Vendor's Market is a commerce platform for customers, retail vendors, and wholesale businesses in Nepal. It is built as a
 modular monolith with a Next.js web app and a versioned FastAPI backend.
 
-## Implemented phases: Foundation, identity, catalogue, and retail ordering
+## Implemented phases: Foundation through communication and reviews
 
 The repository includes a Next.js customer-facing application shell, a FastAPI service, PostgreSQL/PostGIS and MinIO for
 local development, database migrations, structured API errors and logs, dependency health checks, and automated quality
@@ -16,6 +16,11 @@ checkout, database-locked inventory reservation, vendor-specific fulfillment ord
 events, delivery tracking numbers, customer/vendor notifications, invoice records, and cash-on-delivery transactions.
 Customers can cancel before dispatch and request a return within seven days after delivery. A returned cash-on-delivery
 order creates a refund-due ledger entry that the fulfilling vendor records when cash is refunded.
+Phase 5 adds customer-to-vendor conversations with durable message history, unread counts, in-app notifications,
+WebSocket updates, and optional product/order context. Customers can review products only after a related fulfillment is
+delivered; reviews enter an administrator moderation queue, can be reported, and support vendor responses. Customers and
+vendors can escalate order issues through support tickets and disputes, with administrator responses, notifications, and
+audit history.
 
 ## Prerequisites
 
@@ -108,18 +113,27 @@ Open `http://localhost:3000`.
 
 The marketplace is at `/marketplace`; customers can add products to `/cart`, check out with a saved delivery address,
 and view progress and invoices at `/orders`. Vendor shop and product management is at `/vendor`, with fulfillment
-management at `/vendor/orders`; notifications are at `/notifications`. Authorized administrators can manage catalogue
-taxonomy and moderate listings at `/admin/catalog`. A vendor must have an approved vendor application before creating a
-shop; product submissions remain unpublished until an administrator approves them.
+management at `/vendor/orders`; vendor reviews are at `/vendor/reviews`. Customers and vendors can use `/messages` for
+persisted conversations, `/support` for support requests, and `/notifications` for order, message, review-response, and
+support updates. Authorized administrators can manage catalogue taxonomy and moderate listings at `/admin/catalog`, and
+review reports, pending reviews, support tickets, and disputes at `/admin/communications`. A vendor must have an
+approved vendor application before creating a shop; product submissions remain unpublished until an administrator
+approves them.
 
 Checkout currently supports cash on delivery. Shipping is a fixed NPR 100 per vendor fulfillment, so a multi-vendor
 cart pays one delivery fee per shop. Prices and totals are calculated from server-side catalogue data using decimal
 currency values. Stock is atomically reserved during checkout and returned to availability when a fulfillment is
-cancelled or a vendor accepts a return. Apply the Phase 4 schema with the normal migration command:
+cancelled or a vendor accepts a return. Apply the latest schema with the normal migration command:
 
 ```powershell
-alembic -c apps\backend\alembic.ini upgrade head
+python -m alembic -c apps\backend\alembic.ini upgrade head
 ```
+
+After pulling schema changes, run this command before using the updated features. Phase 5 requires revision
+`0005_communications_reviews`; verify the installed revision with
+`python -m alembic -c apps\backend\alembic.ini current`. Missing migrations can cause HTTP 500 responses on
+reviews, conversations, and support tickets. Unexpected API errors are logged server-side and return sanitized JSON
+with CORS headers for configured origins.
 
 The web app uses `http://localhost:8000/api/v1` by default. Set
 `NEXT_PUBLIC_API_URL` at build time when the API is hosted at a different origin, and configure the backend CORS

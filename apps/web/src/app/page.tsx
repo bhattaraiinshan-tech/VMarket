@@ -4,11 +4,11 @@ import Link from 'next/link';
 export default function HomePage() {
   return (
     <>
-      <nav className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-3 sm:px-8">
+      <nav className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-3 sm:px-8">
         <Link className="font-bold text-emerald-800" href="/">
           Vendor&apos;s Market
         </Link>
-        <div className="flex items-center gap-4 text-sm font-semibold">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm font-semibold">
           <Link
             className="text-slate-700 hover:text-emerald-800"
             href="/marketplace"

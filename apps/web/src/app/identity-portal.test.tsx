@@ -42,7 +42,10 @@ describe('identity account controls', () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockImplementation(async (input, init) => {
-        const path = new URL(String(input)).pathname.replace('/api/v1', '');
+        const path = new URL(
+          String(input),
+          'http://localhost:3000',
+        ).pathname.replace('/api/v1', '');
         let payload: unknown;
 
         if (path === '/me') {
@@ -115,7 +118,10 @@ describe('identity account controls', () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockImplementation(async (input, init) => {
-        const path = new URL(String(input)).pathname.replace('/api/v1', '');
+        const path = new URL(
+          String(input),
+          'http://localhost:3000',
+        ).pathname.replace('/api/v1', '');
         let payload: unknown;
 
         if (path === '/me') {

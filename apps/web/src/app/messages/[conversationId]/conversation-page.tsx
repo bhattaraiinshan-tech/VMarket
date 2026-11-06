@@ -3,13 +3,9 @@
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 
-import {
-  API_BASE_URL,
-  Conversation,
-  ConversationMessage,
-  requestApi,
-} from '@/lib/api';
+import { Conversation, ConversationMessage, requestApi } from '@/lib/api';
 import { useWorkspace } from '@/lib/workspace-context';
+import { conversationSocketUrl } from '@/lib/network';
 
 export default function ConversationPage({
   conversationId,
@@ -57,10 +53,7 @@ export default function ConversationPage({
 
     function connect() {
       if (!active) return;
-      const url = new URL(
-        `${API_BASE_URL}/communications/ws/${conversationId}`,
-      );
-      url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+      const url = conversationSocketUrl(conversationId, window.location.origin);
       if (workspace !== 'customer' && workspace !== 'vendor') return;
       url.searchParams.set('workspace', workspace);
       if (workspace === 'vendor') {

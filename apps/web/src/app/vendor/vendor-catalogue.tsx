@@ -14,6 +14,7 @@ import {
   requestApi,
 } from '@/lib/api';
 import { useWorkspaceShops } from '@/lib/workspace-context';
+import { browserStorageUrl } from '@/lib/network';
 
 type ShopDraft = {
   name: string;
@@ -657,7 +658,9 @@ export default function VendorCatalogue() {
                 aria-label={`${shop.name} logo`}
                 className="mb-3 h-16 w-16 rounded-lg bg-cover bg-center bg-slate-100"
                 role="img"
-                style={{ backgroundImage: `url("${shop.logo_url}")` }}
+                style={{
+                  backgroundImage: `url("${browserStorageUrl(shop.logo_url)}")`,
+                }}
               />
             )}
             <label className="block text-sm font-medium text-slate-800">

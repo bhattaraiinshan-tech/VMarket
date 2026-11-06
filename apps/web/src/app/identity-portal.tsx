@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { requestApi as request } from '@/lib/api';
 import { useWorkspace } from '@/lib/workspace-context';
+import { browserStorageUrl } from '@/lib/network';
 import {
   setWorkspaceUser as setUser,
   type WorkspaceUser as UserProfile,
@@ -456,7 +457,7 @@ export default function IdentityPortal() {
       );
       setAdminDocumentUrls((current) => ({
         ...current,
-        [document.id]: result.url,
+        [document.id]: browserStorageUrl(result.url),
       }));
       setAuditEvents(await request<AuditEvent[]>('/admin/audit-logs'));
     });

@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { browserStorageUrl } from '@/lib/network';
 import {
   ChangeEvent,
   FormEvent,
@@ -324,7 +325,7 @@ export default function TradeWorkspace() {
       const response = await requestApi<{ url: string; expires_in_seconds: number }>(
         `/trade/documents/${documentId}/url`,
       );
-      setDocumentUrls((current) => ({ ...current, [documentId]: response.url }));
+      setDocumentUrls((current) => ({ ...current, [documentId]: browserStorageUrl(response.url) }));
     } catch (cause: unknown) {
       setError(
         cause instanceof Error

@@ -85,10 +85,10 @@ export default function WorkspaceSwitcher() {
         </label>
         {workspace === 'vendor' && (
           <>
-            <label>
+            <label className="flex min-w-0 max-w-full items-center gap-2">
               Shop
               <select
-                className="ml-2 rounded border p-2"
+                className="min-w-0 rounded border p-2"
                 value={shopId ?? ''}
                 disabled={loading}
                 onChange={(event) => {

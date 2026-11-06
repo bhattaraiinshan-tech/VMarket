@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { browserStorageUrl } from '@/lib/network';
 
 import {
   Cart,
@@ -194,7 +195,9 @@ export default function ProductDetails({ slug }: { slug: string }) {
                 className="min-h-72 rounded-2xl bg-cover bg-center bg-slate-100"
                 key={image.id}
                 role="img"
-                style={{ backgroundImage: `url("${image.url}")` }}
+                style={{
+                  backgroundImage: `url("${browserStorageUrl(image.url)}")`,
+                }}
               />
             ))
           ) : (

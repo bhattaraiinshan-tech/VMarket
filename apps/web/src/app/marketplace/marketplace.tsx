@@ -13,6 +13,7 @@ import {
   requestApi,
 } from '@/lib/api';
 import { useWorkspace } from '@/lib/workspace-context';
+import { browserStorageUrl } from '@/lib/network';
 
 type Filters = {
   q: string;
@@ -55,7 +56,9 @@ function ProductCard({
             aria-label={product.images[0].alt_text || product.name}
             className="h-48 bg-cover bg-center bg-slate-100"
             role="img"
-            style={{ backgroundImage: `url("${product.images[0].url}")` }}
+            style={{
+              backgroundImage: `url("${browserStorageUrl(product.images[0].url)}")`,
+            }}
           />
         ) : (
           <div className="flex h-48 items-center justify-center bg-emerald-50 text-4xl text-emerald-800">

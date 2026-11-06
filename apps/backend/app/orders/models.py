@@ -172,11 +172,26 @@ class OrderStatusEvent(Base):
 
 class OrderNotification(Base):
     __tablename__ = "order_notifications"
-    __table_args__ = (Index("ix_order_notifications_user_created", "user_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_order_notifications_user_created", "user_id", "created_at"),
+        CheckConstraint(
+            "workspace IN ('customer', 'vendor', 'admin', 'account')",
+            name="ck_order_notifications_workspace",
+        ),
+        CheckConstraint(
+            "(workspace = 'vendor' AND shop_id IS NOT NULL) OR "
+            "(workspace <> 'vendor' AND shop_id IS NULL)",
+            name="ck_order_notifications_shop_scope",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    workspace: Mapped[str] = mapped_column(String(16))
+    shop_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("shops.id", ondelete="RESTRICT")
     )
     order_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL")

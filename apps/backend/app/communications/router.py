@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.catalog.models import Product, Shop
 from app.communications.models import (
@@ -33,8 +34,15 @@ from app.communications.schemas import (
 from app.core.config import get_settings
 from app.core.errors import APIError
 from app.db.session import get_session, get_session_factory
-from app.identity.dependencies import get_current_admin, get_current_user
-from app.identity.models import AuditLog, AuthSession, CustomerProfile, User, UserRole
+from app.identity.dependencies import (
+    Workspace,
+    WorkspaceContext,
+    get_current_admin,
+    get_current_customer,
+    get_workspace_context,
+    resolve_workspace,
+)
+from app.identity.models import AuditLog, AuthSession, CustomerProfile, PlatformOwner, User
 from app.identity.security import hash_token
 from app.orders.models import (
     CustomerOrder,
@@ -48,28 +56,47 @@ router = APIRouter(tags=["communications"])
 
 class ConversationConnections:
     def __init__(self) -> None:
-        self._connections: dict[UUID, set[WebSocket]] = {}
+        self._connections: dict[
+            UUID, dict[WebSocket, tuple[str, UUID, Workspace, UUID | None]]
+        ] = {}
         self._lock = asyncio.Lock()
 
-    async def connect(self, conversation_id: UUID, websocket: WebSocket) -> None:
+    async def connect(
+        self,
+        conversation_id: UUID,
+        websocket: WebSocket,
+        token_hash: str,
+        user_id: UUID,
+        workspace: Workspace,
+        shop_id: UUID | None,
+    ) -> None:
         async with self._lock:
-            self._connections.setdefault(conversation_id, set()).add(websocket)
+            self._connections.setdefault(conversation_id, {})[websocket] = (
+                token_hash,
+                user_id,
+                workspace,
+                shop_id,
+            )
 
     async def disconnect(self, conversation_id: UUID, websocket: WebSocket) -> None:
         async with self._lock:
             connections = self._connections.get(conversation_id)
             if connections is None:
                 return
-            connections.discard(websocket)
+            connections.pop(websocket, None)
             if not connections:
                 self._connections.pop(conversation_id, None)
 
     async def publish(self, conversation_id: UUID, message: MessageRead) -> None:
         async with self._lock:
-            connections = tuple(self._connections.get(conversation_id, ()))
+            connections = tuple(self._connections.get(conversation_id, {}).items())
         payload = message.model_dump(mode="json")
-        for websocket in connections:
+        for websocket, auth in connections:
             try:
+                if not await _live_connection_authorized(conversation_id, auth):
+                    await websocket.close(code=4403)
+                    await self.disconnect(conversation_id, websocket)
+                    continue
                 await websocket.send_json(payload)
             except (RuntimeError, WebSocketDisconnect):
                 await self.disconnect(conversation_id, websocket)
@@ -78,11 +105,60 @@ class ConversationConnections:
 connections = ConversationConnections()
 
 
+async def _live_connection_authorized(
+    conversation_id: UUID,
+    auth: tuple[str, UUID, Workspace, UUID | None],
+) -> bool:
+    session_token_hash, user_id, workspace, shop_id = auth
+    async with get_session_factory()() as session:
+        auth_session = await session.scalar(
+            select(AuthSession).where(
+                AuthSession.token_hash == session_token_hash,
+                AuthSession.user_id == user_id,
+                AuthSession.revoked_at.is_(None),
+                AuthSession.expires_at > datetime.now(timezone.utc),
+            )
+        )
+        if auth_session is None:
+            return False
+        user = await session.scalar(
+            select(User)
+            .options(
+                selectinload(User.profile),
+                selectinload(User.vendor_profile),
+                selectinload(User.owner_binding),
+            )
+            .where(User.id == user_id)
+        )
+        conversation = await session.get(Conversation, conversation_id)
+        shop = await session.get(Shop, conversation.shop_id) if conversation is not None else None
+        if (
+            user is None
+            or user.account_status != "active"
+            or not user.email_verified
+            or conversation is None
+            or shop is None
+        ):
+            return False
+        try:
+            context = await resolve_workspace(session, user, workspace, shop_id)
+        except APIError:
+            return False
+        return (context.workspace == "customer" and user.id == conversation.customer_id) or (
+            context.workspace == "vendor"
+            and context.shop is not None
+            and context.shop.id == shop.id
+            and user.id == shop.owner_user_id
+        )
+
+
 async def _conversation(
     session: AsyncSession,
-    user: User,
+    context: WorkspaceContext,
     conversation_id: UUID,
 ) -> tuple[Conversation, Shop]:
+    if context.workspace == "vendor" and context.shop is None:
+        raise APIError(422, "shop_context_required", "Select a shop to continue.")
     result = await session.execute(
         select(Conversation, Shop)
         .join(Shop, Shop.id == Conversation.shop_id)
@@ -92,7 +168,13 @@ async def _conversation(
     if row is None:
         raise APIError(404, "conversation_not_found", "The conversation was not found.")
     conversation, shop = row
-    if user.id not in {conversation.customer_id, shop.owner_user_id}:
+    allowed = (context.workspace == "customer" and context.user.id == conversation.customer_id) or (
+        context.workspace == "vendor"
+        and context.shop is not None
+        and context.shop.id == shop.id
+        and context.user.id == shop.owner_user_id
+    )
+    if not allowed:
         raise APIError(404, "conversation_not_found", "The conversation was not found.")
     return conversation, shop
 
@@ -183,20 +265,21 @@ async def _review_report_read(
 
 async def _ticket_order_access(
     session: AsyncSession,
-    user: User,
+    context: WorkspaceContext,
     order_id: UUID,
 ) -> CustomerOrder:
     order = await session.get(CustomerOrder, order_id)
     if order is None:
         raise APIError(404, "order_not_found", "The order was not found.")
-    if order.customer_id == user.id:
+    if context.workspace == "customer" and order.customer_id == context.user.id:
         return order
+    if context.workspace != "vendor" or context.shop is None:
+        raise APIError(404, "order_not_found", "The order was not found.")
     shop_id = await session.scalar(
         select(FulfillmentOrder.shop_id)
-        .join(Shop, Shop.id == FulfillmentOrder.shop_id)
         .where(
             FulfillmentOrder.order_id == order.id,
-            Shop.owner_user_id == user.id,
+            FulfillmentOrder.shop_id == context.shop.id,
         )
         .limit(1)
     )
@@ -205,42 +288,61 @@ async def _ticket_order_access(
     return order
 
 
+def _require_customer_context(context: WorkspaceContext) -> User:
+    if context.workspace != "customer":
+        raise APIError(403, "customer_workspace_required", "Switch to Customer mode.")
+    return context.user
+
+
+def _require_vendor_shop(context: WorkspaceContext) -> tuple[User, Shop]:
+    if context.workspace != "vendor":
+        raise APIError(403, "vendor_workspace_required", "Switch to Vendor mode.")
+    if context.shop is None:
+        raise APIError(422, "shop_context_required", "Select a shop to continue.")
+    return context.user, context.shop
+
+
 @router.get("/me/conversations", response_model=list[ConversationRead])
 async def list_conversations(
-    user: Annotated[User, Depends(get_current_user)],
+    context: Annotated[WorkspaceContext, Depends(get_workspace_context)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[ConversationRead]:
-    conversations = await session.scalars(
-        select(Conversation)
-        .join(Shop, Shop.id == Conversation.shop_id)
-        .where((Conversation.customer_id == user.id) | (Shop.owner_user_id == user.id))
-        .order_by(Conversation.updated_at.desc())
-        .limit(100)
-    )
+    if context.workspace == "customer":
+        _require_customer_context(context)
+        query = select(Conversation).where(Conversation.customer_id == context.user.id)
+    elif context.workspace == "vendor":
+        _, selected_shop = _require_vendor_shop(context)
+        query = select(Conversation).where(Conversation.shop_id == selected_shop.id)
+    else:
+        raise APIError(403, "communications_workspace_required", "Select Customer or Vendor mode.")
+    conversations = await session.scalars(query.order_by(Conversation.updated_at.desc()).limit(100))
     result: list[ConversationRead] = []
     for conversation in conversations:
-        shop = await session.get(Shop, conversation.shop_id)
-        if shop is not None:
-            result.append(await _conversation_read(session, user, conversation, shop))
+        conversation_shop = await session.get(Shop, conversation.shop_id)
+        if conversation_shop is not None:
+            result.append(
+                await _conversation_read(session, context.user, conversation, conversation_shop)
+            )
     return result
 
 
 @router.get("/me/conversations/{conversation_id}", response_model=ConversationRead)
 async def get_conversation(
     conversation_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
+    context: Annotated[WorkspaceContext, Depends(get_workspace_context)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ConversationRead:
-    conversation, shop = await _conversation(session, user, conversation_id)
-    return await _conversation_read(session, user, conversation, shop)
+    conversation, shop = await _conversation(session, context, conversation_id)
+    return await _conversation_read(session, context.user, conversation, shop)
 
 
 @router.post("/me/conversations", response_model=ConversationRead, status_code=201)
 async def start_conversation(
     payload: ConversationCreate,
-    user: Annotated[User, Depends(get_current_user)],
+    context: Annotated[WorkspaceContext, Depends(get_workspace_context)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ConversationRead:
+    user = _require_customer_context(context)
     shop = await session.get(Shop, payload.shop_id)
     if shop is None or not shop.is_active:
         raise APIError(404, "shop_not_found", "The shop was not found.")
@@ -259,7 +361,7 @@ async def start_conversation(
         if product is None:
             raise APIError(404, "product_not_found", "The product was not found in this shop.")
     if payload.order_id is not None:
-        order = await _ticket_order_access(session, user, payload.order_id)
+        order = await _ticket_order_access(session, context, payload.order_id)
         owns_fulfillment = await session.scalar(
             select(FulfillmentOrder.id).where(
                 FulfillmentOrder.order_id == order.id,
@@ -297,15 +399,15 @@ async def start_conversation(
 )
 async def list_messages(
     conversation_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
+    context: Annotated[WorkspaceContext, Depends(get_workspace_context)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[MessageRead]:
-    conversation, _ = await _conversation(session, user, conversation_id)
+    conversation, _ = await _conversation(session, context, conversation_id)
     await session.execute(
         update(ConversationMessage)
         .where(
             ConversationMessage.conversation_id == conversation.id,
-            ConversationMessage.sender_id != user.id,
+            ConversationMessage.sender_id != context.user.id,
             ConversationMessage.read_at.is_(None),
         )
         .values(read_at=datetime.now(timezone.utc))
@@ -328,18 +430,21 @@ async def list_messages(
 async def send_message(
     conversation_id: UUID,
     payload: MessageCreate,
-    user: Annotated[User, Depends(get_current_user)],
+    context: Annotated[WorkspaceContext, Depends(get_workspace_context)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> MessageRead:
-    conversation, shop = await _conversation(session, user, conversation_id)
+    conversation, shop = await _conversation(session, context, conversation_id)
     recipient_id = (
-        shop.owner_user_id if conversation.customer_id == user.id else conversation.customer_id
+        shop.owner_user_id
+        if conversation.customer_id == context.user.id
+        else conversation.customer_id
     )
     message = ConversationMessage(
         conversation_id=conversation.id,
-        sender_id=user.id,
+        sender_id=context.user.id,
         content=payload.content,
     )
+    sender_name = context.user.profile.full_name if context.user.profile else "a participant"
     session.add(message)
     conversation.updated_at = datetime.now(timezone.utc)
     session.add(
@@ -347,7 +452,9 @@ async def send_message(
             user_id=recipient_id,
             order_id=conversation.order_id,
             conversation_id=conversation.id,
-            title=f"New message from {user.profile.full_name if user.profile else 'a participant'}",
+            workspace="vendor" if context.workspace == "customer" else "customer",
+            shop_id=shop.id if context.workspace == "customer" else None,
+            title=f"New message from {sender_name}",
             message=payload.content[:500],
         )
     )
@@ -361,22 +468,46 @@ async def send_message(
 @router.websocket("/communications/ws/{conversation_id}")
 async def conversation_socket(websocket: WebSocket, conversation_id: UUID) -> None:
     origin = websocket.headers.get("origin")
-    if origin is not None and origin not in get_settings().cors_origins:
+    if origin is None or origin not in get_settings().cors_origins:
         await websocket.close(code=4403)
         return
     token = websocket.cookies.get("vmarket_session")
     if not token:
         await websocket.close(code=4401)
         return
+    workspace_value = websocket.query_params.get("workspace")
+    if workspace_value not in {"customer", "vendor"}:
+        await websocket.close(code=4403)
+        return
+    workspace: Workspace = workspace_value  # type: ignore[assignment]
+    raw_shop_id = websocket.query_params.get("shop_id")
+    try:
+        shop_id = UUID(raw_shop_id) if raw_shop_id else None
+    except ValueError:
+        await websocket.close(code=4403)
+        return
+    token_hash = hash_token(token)
     async with get_session_factory()() as session:
         auth_session = await session.scalar(
             select(AuthSession).where(
-                AuthSession.token_hash == hash_token(token),
+                AuthSession.token_hash == token_hash,
                 AuthSession.revoked_at.is_(None),
                 AuthSession.expires_at > datetime.now(timezone.utc),
             )
         )
-        user = await session.get(User, auth_session.user_id) if auth_session is not None else None
+        user = (
+            await session.scalar(
+                select(User)
+                .options(
+                    selectinload(User.profile),
+                    selectinload(User.vendor_profile),
+                    selectinload(User.owner_binding),
+                )
+                .where(User.id == auth_session.user_id)
+            )
+            if auth_session is not None
+            else None
+        )
         conversation = await session.get(Conversation, conversation_id)
         shop = await session.get(Shop, conversation.shop_id) if conversation is not None else None
         if (
@@ -385,15 +516,37 @@ async def conversation_socket(websocket: WebSocket, conversation_id: UUID) -> No
             or not user.email_verified
             or conversation is None
             or shop is None
-            or user.id not in {conversation.customer_id, shop.owner_user_id}
+        ):
+            await websocket.close(code=4403)
+            return
+        try:
+            context = await resolve_workspace(session, user, workspace, shop_id)
+        except APIError:
+            await websocket.close(code=4403)
+            return
+        if not (
+            (context.workspace == "customer" and user.id == conversation.customer_id)
+            or (
+                context.workspace == "vendor"
+                and context.shop is not None
+                and context.shop.id == shop.id
+                and user.id == shop.owner_user_id
+            )
         ):
             await websocket.close(code=4403)
             return
     await websocket.accept()
-    await connections.connect(conversation_id, websocket)
+    await connections.connect(
+        conversation_id, websocket, token_hash, user.id, context.workspace, shop_id
+    )
     try:
         while True:
             await websocket.receive_text()
+            if not await _live_connection_authorized(
+                conversation_id, (token_hash, user.id, context.workspace, shop_id)
+            ):
+                await websocket.close(code=4403)
+                break
     except WebSocketDisconnect:
         pass
     finally:
@@ -425,7 +578,7 @@ async def list_product_reviews(
 @router.post("/me/reviews", response_model=ReviewRead, status_code=201)
 async def create_review(
     payload: ReviewCreate,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ReviewRead:
     result = await session.execute(
@@ -447,6 +600,17 @@ async def create_review(
             "Reviews are available only for products in delivered orders you purchased.",
         )
     item, _, _ = row
+    product_shop_owner_id = await session.scalar(
+        select(Shop.owner_user_id)
+        .join(Product, Product.shop_id == Shop.id)
+        .where(Product.id == item.product_id)
+    )
+    if product_shop_owner_id == user.id:
+        raise APIError(
+            403,
+            "review_not_eligible",
+            "You cannot review a purchase from a shop you own.",
+        )
     existing = await session.scalar(
         select(ProductReview).where(ProductReview.order_item_id == item.id)
     )
@@ -475,7 +639,7 @@ async def create_review(
 async def report_review(
     review_id: UUID,
     payload: ReviewReportCreate,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ReviewReportRead:
     review = await session.get(ProductReview, review_id)
@@ -503,12 +667,10 @@ async def report_review(
 
 @router.get("/vendor/reviews", response_model=list[ReviewRead])
 async def list_vendor_reviews(
-    user: Annotated[User, Depends(get_current_user)],
+    context: Annotated[WorkspaceContext, Depends(get_workspace_context)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[ReviewRead]:
-    shop = await session.scalar(select(Shop).where(Shop.owner_user_id == user.id))
-    if shop is None:
-        raise APIError(404, "shop_not_found", "The vendor shop was not found.")
+    _, shop = _require_vendor_shop(context)
     reviews = await session.scalars(
         select(ProductReview)
         .join(Product, Product.id == ProductReview.product_id)
@@ -523,9 +685,10 @@ async def list_vendor_reviews(
 async def respond_to_review(
     review_id: UUID,
     payload: VendorReviewResponse,
-    user: Annotated[User, Depends(get_current_user)],
+    context: Annotated[WorkspaceContext, Depends(get_workspace_context)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ReviewRead:
+    _, shop = _require_vendor_shop(context)
     review = await session.scalar(
         select(ProductReview)
         .join(Product, Product.id == ProductReview.product_id)
@@ -533,7 +696,7 @@ async def respond_to_review(
         .where(
             ProductReview.id == review_id,
             ProductReview.moderation_status == "visible",
-            Shop.owner_user_id == user.id,
+            Shop.id == shop.id,
         )
     )
     if review is None:
@@ -543,6 +706,9 @@ async def respond_to_review(
     session.add(
         OrderNotification(
             user_id=review.customer_id,
+            order_id=None,
+            workspace="customer",
+            shop_id=None,
             title="A vendor responded to your review",
             message=f"{review.product_id}: {payload.response[:400]}",
         )
@@ -624,15 +790,25 @@ async def moderate_review(
 @router.post("/me/support-tickets", response_model=SupportTicketRead, status_code=201)
 async def create_support_ticket(
     payload: SupportTicketCreate,
-    user: Annotated[User, Depends(get_current_user)],
+    context: Annotated[WorkspaceContext, Depends(get_workspace_context)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> SupportTicketRead:
+    if context.workspace == "customer":
+        user = _require_customer_context(context)
+        shop_id = None
+    elif context.workspace == "vendor":
+        user, selected_shop = _require_vendor_shop(context)
+        shop_id = selected_shop.id
+    else:
+        raise APIError(403, "communications_workspace_required", "Select Customer or Vendor mode.")
     if payload.kind == "dispute" and payload.order_id is None:
         raise APIError(422, "dispute_order_required", "A dispute must reference an order.")
     if payload.order_id is not None:
-        await _ticket_order_access(session, user, payload.order_id)
+        await _ticket_order_access(session, context, payload.order_id)
     ticket = SupportTicket(
         created_by_id=user.id,
+        workspace=context.workspace,
+        shop_id=shop_id,
         order_id=payload.order_id,
         kind=payload.kind,
         subject=payload.subject,
@@ -640,16 +816,23 @@ async def create_support_ticket(
     )
     session.add(ticket)
     await session.flush()
-    admin_ids = await session.scalars(select(UserRole.user_id).where(UserRole.role == "admin"))
-    for admin_id in admin_ids:
-        session.add(
-            OrderNotification(
-                user_id=admin_id,
-                order_id=payload.order_id,
-                title="New support dispute" if payload.kind == "dispute" else "New support ticket",
-                message=payload.subject,
-            )
+    owner = await session.get(PlatformOwner, 1)
+    if owner is None:
+        raise APIError(
+            503,
+            "platform_owner_unavailable",
+            "Support notifications are unavailable until platform ownership is configured.",
         )
+    session.add(
+        OrderNotification(
+            user_id=owner.user_id,
+            order_id=payload.order_id,
+            workspace="admin",
+            shop_id=None,
+            title="New support dispute" if payload.kind == "dispute" else "New support ticket",
+            message=payload.subject,
+        )
+    )
     await session.commit()
     await session.refresh(ticket)
     return SupportTicketRead.model_validate(ticket)
@@ -657,15 +840,27 @@ async def create_support_ticket(
 
 @router.get("/me/support-tickets", response_model=list[SupportTicketRead])
 async def list_my_support_tickets(
-    user: Annotated[User, Depends(get_current_user)],
+    context: Annotated[WorkspaceContext, Depends(get_workspace_context)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[SupportTicketRead]:
-    tickets = await session.scalars(
-        select(SupportTicket)
-        .where(SupportTicket.created_by_id == user.id)
-        .order_by(SupportTicket.updated_at.desc())
-        .limit(100)
-    )
+    query = select(SupportTicket)
+    if context.workspace == "customer":
+        _require_customer_context(context)
+        query = query.where(
+            SupportTicket.created_by_id == context.user.id,
+            SupportTicket.workspace == "customer",
+            SupportTicket.shop_id.is_(None),
+        )
+    elif context.workspace == "vendor":
+        _, selected_shop = _require_vendor_shop(context)
+        query = query.where(
+            SupportTicket.created_by_id == context.user.id,
+            SupportTicket.workspace == "vendor",
+            SupportTicket.shop_id == selected_shop.id,
+        )
+    else:
+        raise APIError(403, "communications_workspace_required", "Select Customer or Vendor mode.")
+    tickets = await session.scalars(query.order_by(SupportTicket.updated_at.desc()).limit(100))
     return [SupportTicketRead.model_validate(ticket) for ticket in tickets]
 
 
@@ -700,6 +895,8 @@ async def update_support_ticket(
         OrderNotification(
             user_id=ticket.created_by_id,
             order_id=ticket.order_id,
+            workspace=ticket.workspace,
+            shop_id=ticket.shop_id,
             title="Support request updated",
             message=f"{ticket.subject}: {payload.status.replace('_', ' ')}",
         )

@@ -1,5 +1,4 @@
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api/v1';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? '/api/v1';
 
 export class ApiError extends Error {
   constructor(
@@ -15,37 +14,124 @@ export async function requestApi<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const isFormData = init.body instanceof FormData;
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    credentials: 'include',
-    headers: {
-      ...(!isFormData && init.body !== undefined
-        ? { 'Content-Type': 'application/json' }
-        : {}),
-      ...init.headers,
-    },
-  });
-  const payload: unknown =
-    response.status === 204
-      ? undefined
-      : await response.json().catch(() => null);
-  if (!response.ok) {
-    let message = 'The request could not be completed.';
-    if (typeof payload === 'object' && payload !== null && 'error' in payload) {
-      const error = payload.error;
-      if (
-        typeof error === 'object' &&
-        error !== null &&
-        'message' in error &&
-        typeof error.message === 'string'
-      ) {
-        message = error.message;
-      }
-    }
-    throw new ApiError(message, response.status);
+  const context = getWorkspaceSnapshot();
+  const pathname = path.split('?')[0];
+  const method = (init.method ?? 'GET').toUpperCase();
+  const vendor = /^\/(vendor\/|trade(?:\/|$))/.test(pathname);
+  const admin = pathname.startsWith('/admin/');
+  const shared =
+    /^\/me\/(notifications|support-tickets|conversations)(?:\/|$)/.test(
+      pathname,
+    );
+  const customer =
+    (pathname === '/me' && method === 'PATCH') ||
+    (pathname.startsWith('/me/') &&
+      !shared &&
+      !['/me/export', '/me/deactivate'].includes(pathname)) ||
+    /^\/(checkout|orders|payments)(?:\/|$)/.test(pathname);
+  let required: Workspace | null = vendor
+    ? 'vendor'
+    : admin
+      ? 'admin'
+      : customer
+        ? 'customer'
+        : null;
+  if (shared) required = context.workspace;
+  if (
+    (vendor || admin || customer || shared) &&
+    (!context.user || !required || context.workspace !== required)
+  ) {
+    throw new ApiError(
+      `${vendor ? 'Vendor' : admin ? 'Admin' : customer ? 'Customer' : 'An authenticated'} workspace is required. Use the workspace selector.`,
+      403,
+    );
   }
-  return payload as T;
+  if (
+    shared &&
+    context.workspace === 'admin' &&
+    pathname.startsWith('/me/conversations')
+  ) {
+    throw new ApiError('Messages require Customer or Vendor workspace.', 403);
+  }
+  const shopBound =
+    (vendor && pathname !== '/vendor/shops') ||
+    (shared && context.workspace === 'vendor');
+  if (shopBound && !context.shopId) {
+    throw new ApiError(
+      'Select a shop before using this vendor workspace.',
+      403,
+    );
+  }
+  const isFormData = init.body instanceof FormData;
+  const headers = new Headers(init.headers);
+  headers.delete('X-VMarket-Workspace');
+  headers.delete('X-VMarket-Shop-Id');
+  if (!isFormData && init.body !== undefined)
+    headers.set('Content-Type', 'application/json');
+  if (required) headers.set('X-VMarket-Workspace', required);
+  if (shopBound && context.shopId)
+    headers.set('X-VMarket-Shop-Id', context.shopId);
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (init.signal?.aborted) controller.abort();
+  init.signal?.addEventListener('abort', abort, { once: true });
+  const untrack = trackWorkspaceRequest(controller);
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      credentials: 'include',
+      headers,
+      signal: controller.signal,
+    });
+    const payload: unknown =
+      response.status === 204
+        ? undefined
+        : await response.json().catch(() => null);
+    if (
+      controller.signal.aborted ||
+      context.revision !== getWorkspaceSnapshot().revision
+    ) {
+      throw new DOMException(
+        'Workspace changed; obsolete response discarded.',
+        'AbortError',
+      );
+    }
+    if (!response.ok) {
+      let message = 'The request could not be completed.';
+      if (
+        typeof payload === 'object' &&
+        payload !== null &&
+        'error' in payload
+      ) {
+        const error = payload.error;
+        if (
+          typeof error === 'object' &&
+          error !== null &&
+          'message' in error &&
+          typeof error.message === 'string'
+        ) {
+          message = error.message;
+        }
+      }
+      if (response.status === 401) setWorkspaceUser(null);
+      throw new ApiError(message, response.status);
+    }
+    if (
+      (pathname === '/me' || pathname === '/auth/login') &&
+      payload &&
+      typeof payload === 'object' &&
+      'id' in payload &&
+      'roles' in payload
+    ) {
+      setWorkspaceUser(payload as WorkspaceUser);
+    }
+    if (pathname === '/auth/logout' || pathname === '/me/deactivate')
+      setWorkspaceUser(null);
+    return payload as T;
+  } finally {
+    untrack();
+    init.signal?.removeEventListener('abort', abort);
+  }
 }
 
 export type CategoryAttribute = {
@@ -113,6 +199,8 @@ export type ProductPage = {
 
 export type Shop = {
   id: string;
+  is_active: boolean;
+  slot: number;
   name: string;
   slug: string;
   description: string | null;
@@ -224,6 +312,8 @@ export type Order = {
 
 export type Notification = {
   id: string;
+  workspace: Workspace;
+  shop_id: string | null;
   order_id: string | null;
   fulfillment_order_id: string | null;
   conversation_id: string | null;
@@ -276,6 +366,8 @@ export type ProductReview = {
 
 export type SupportTicket = {
   id: string;
+  workspace: Workspace;
+  shop_id: string | null;
   created_by_id: string;
   order_id: string | null;
   kind: 'support' | 'dispute';
@@ -442,3 +534,10 @@ export type TradeSupplier = {
   average_rating: string | null;
   reviews: TradeBusinessReview[];
 };
+import {
+  getWorkspaceSnapshot,
+  setWorkspaceUser,
+  trackWorkspaceRequest,
+  type Workspace,
+  type WorkspaceUser,
+} from './workspace-state';

@@ -13,7 +13,7 @@ from sqlalchemy.pool import StaticPool
 from app.db.base import Base
 from app.db.session import get_session
 from app.identity import router as identity_router
-from app.identity.models import User, UserRole
+from app.identity.models import PlatformOwner, User, UserRole, VendorProfile
 from app.identity.security import hash_password, hash_token, verify_password
 from app.main import create_app
 
@@ -50,6 +50,7 @@ async def identity_client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[Iden
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
+        headers={"X-VMarket-Workspace": "customer"},
     ) as client:
         yield client, sent_emails, factory
     await engine.dispose()
@@ -337,6 +338,7 @@ async def test_admin_review_is_role_protected_and_audited(
         admin = await session.scalar(select(User).where(User.email == "admin@example.com"))
         assert admin is not None
         session.add(UserRole(user_id=admin.id, role="admin"))
+        session.add(PlatformOwner(user_id=admin.id))
         await session.commit()
 
     await client.post(
@@ -346,6 +348,7 @@ async def test_admin_review_is_role_protected_and_audited(
             "password": "a-correct-horse-battery-staple",
         },
     )
+    client.headers["X-VMarket-Workspace"] = "admin"
     queue = await client.get("/api/v1/admin/vendor-applications?status=pending")
     assert queue.status_code == 200
     assert queue.json()[0]["email"] == "vendor@example.com"
@@ -354,6 +357,11 @@ async def test_admin_review_is_role_protected_and_audited(
         json={"status": "approved"},
     )
     assert decision.status_code == 200
+    repeated = await client.post(
+        f"/api/v1/admin/vendor-applications/{application.json()['id']}/decision",
+        json={"status": "approved"},
+    )
+    assert repeated.status_code == 409
     logs = await client.get("/api/v1/admin/audit-logs")
     assert logs.status_code == 200
     assert logs.json()[0]["action"] == "vendor_application_approved"
@@ -376,3 +384,82 @@ async def test_admin_review_is_role_protected_and_audited(
     async with factory() as session:
         vendor_role = await session.get(UserRole, (UUID(vendor_id), "vendor"))
         assert vendor_role is not None
+        vendor_profile = await session.get(VendorProfile, UUID(vendor_id))
+        assert vendor_profile is not None
+        assert vendor_profile.business_name == "Verified Traders"
+
+
+async def test_legacy_admin_role_does_not_grant_owner_access(
+    identity_client: IdentityClient,
+) -> None:
+    client, emails, factory = identity_client
+    await _register_and_verify(client, emails, "not-owner@example.com")
+    async with factory() as session:
+        user = await session.scalar(select(User).where(User.email == "not-owner@example.com"))
+        assert user is not None
+        session.add(UserRole(user_id=user.id, role="admin"))
+        await session.commit()
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "not-owner@example.com", "password": "a-correct-horse-battery-staple"},
+    )
+    assert login.status_code == 200
+    assert login.json()["roles"] == ["customer"]
+    client.headers["X-VMarket-Workspace"] = "admin"
+    assert (await client.get("/api/v1/admin/users")).status_code == 403
+
+
+async def test_owner_protection_and_profile_capabilities(identity_client: IdentityClient) -> None:
+    client, emails, factory = identity_client
+    await _register_and_verify(client, emails, "owner@example.com")
+    async with factory() as session:
+        user = await session.scalar(select(User).where(User.email == "owner@example.com"))
+        assert user is not None
+        session.add(PlatformOwner(user_id=user.id))
+        await session.commit()
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner@example.com", "password": "a-correct-horse-battery-staple"},
+    )
+    assert login.status_code == 200
+    assert login.json()["roles"] == ["customer", "admin"]
+    assert login.json()["vendor_profile"] is None
+    deactivation = await client.post(
+        "/api/v1/me/deactivate",
+        json={"email": "owner@example.com", "password": "a-correct-horse-battery-staple"},
+    )
+    assert deactivation.status_code == 409
+    client.headers["X-VMarket-Workspace"] = "customer"
+    assert (await client.get("/api/v1/admin/users")).status_code == 403
+    client.headers["X-VMarket-Workspace"] = "admin"
+    assert (await client.get("/api/v1/admin/users")).status_code == 200
+
+
+async def test_owner_bootstrap_is_configured_once_and_idempotent(
+    identity_client: IdentityClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from app.identity import bootstrap_admin
+
+    client, emails, factory = identity_client
+    await _register_and_verify(client, emails, "creator@example.com")
+    await _register_and_verify(client, emails, "other@example.com")
+    settings = SimpleNamespace(owner_email="creator@example.com")
+    monkeypatch.setattr(bootstrap_admin, "get_settings", lambda: settings)
+    monkeypatch.setattr(bootstrap_admin, "get_session_factory", lambda: factory)
+    monkeypatch.setattr(bootstrap_admin, "get_engine", lambda: SimpleNamespace(dispose=AsyncMock()))
+    with pytest.raises(SystemExit, match="configured"):
+        await bootstrap_admin.grant_admin("other@example.com")
+    await bootstrap_admin.grant_admin("CREATOR@example.com")
+    await bootstrap_admin.grant_admin("creator@example.com")
+    settings.owner_email = "other@example.com"
+    with pytest.raises(SystemExit, match="already bound"):
+        await bootstrap_admin.grant_admin("other@example.com")
+    async with factory() as session:
+        owner = await session.get(PlatformOwner, 1)
+        creator = await session.scalar(select(User).where(User.email == "creator@example.com"))
+        assert owner is not None and creator is not None
+        assert owner.user_id == creator.id

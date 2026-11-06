@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 
 import { Brand, Category, Product, ProductPage, requestApi } from '@/lib/api';
+import { browserStorageUrl } from '@/lib/network';
 
 const fieldClass =
   'mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900';
@@ -450,7 +451,7 @@ export default function AdminCatalog() {
                             key={image.id}
                             role="img"
                             style={{
-                              backgroundImage: `url("${image.url}")`,
+                              backgroundImage: `url("${browserStorageUrl(image.url)}")`,
                             }}
                           />
                         ))}

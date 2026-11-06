@@ -12,7 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.catalog.models import Product, ProductVariant, Shop
 from app.core.errors import APIError
 from app.db.session import get_session
-from app.identity.dependencies import get_current_user
+from app.identity.dependencies import (
+    WorkspaceContext,
+    get_current_customer,
+    get_current_vendor,
+    get_selected_shop,
+    get_workspace_context,
+)
 from app.identity.models import DeliveryAddress, User
 from app.orders.models import (
     CartItem,
@@ -180,6 +186,8 @@ def _notify(
     fulfillment_id: UUID | None,
     title: str,
     message: str,
+    workspace: str = "customer",
+    shop_id: UUID | None = None,
 ) -> None:
     session.add(
         OrderNotification(
@@ -188,6 +196,8 @@ def _notify(
             fulfillment_order_id=fulfillment_id,
             title=title,
             message=message,
+            workspace=workspace,
+            shop_id=shop_id,
         )
     )
 
@@ -211,6 +221,8 @@ async def _notify_shop_owner(
         fulfillment_id=fulfillment.id,
         title=title,
         message=message,
+        workspace="vendor",
+        shop_id=shop.id,
     )
 
 
@@ -224,15 +236,6 @@ async def _customer_order(session: AsyncSession, user: User, order_id: UUID) -> 
     if order is None:
         raise APIError(404, "order_not_found", "The order was not found.")
     return order
-
-
-async def _vendor_shop(session: AsyncSession, user: User) -> Shop:
-    if not any(role.role == "vendor" for role in user.roles):
-        raise APIError(403, "vendor_required", "Vendor access is required.")
-    shop = await session.scalar(select(Shop).where(Shop.owner_user_id == user.id))
-    if shop is None:
-        raise APIError(404, "shop_not_found", "The vendor shop was not found.")
-    return shop
 
 
 async def _vendor_fulfillment(
@@ -342,7 +345,7 @@ async def _record_status_change(
 
 @router.get("/me/cart", response_model=CartRead)
 async def get_cart(
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> CartRead:
     return await _cart_read(session, user.id)
@@ -351,7 +354,7 @@ async def get_cart(
 @router.post("/me/cart/items", response_model=CartRead, status_code=201)
 async def add_cart_item(
     body: CartItemCreate,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> CartRead:
     await _lock_user_cart(session, user)
@@ -361,6 +364,8 @@ async def add_cart_item(
     shop = await session.get(Shop, product.shop_id)
     if shop is None or not shop.is_active:
         raise APIError(404, "product_unavailable", "This product is not available for purchase.")
+    if shop.owner_user_id == user.id:
+        raise APIError(403, "own_shop_purchase_forbidden", "You cannot buy from your own shops.")
     has_variants = await session.scalar(
         select(ProductVariant.id).where(ProductVariant.product_id == product.id).limit(1)
     )
@@ -405,12 +410,15 @@ async def add_cart_item(
 async def update_cart_item(
     cart_item_id: UUID,
     body: CartItemQuantity,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> CartRead:
     await _lock_user_cart(session, user)
     item = await _cart_item_for_user(session, user, cart_item_id)
     product = await session.get(Product, item.product_id)
+    shop = await session.get(Shop, product.shop_id) if product is not None else None
+    if shop is not None and shop.owner_user_id == user.id:
+        raise APIError(403, "own_shop_purchase_forbidden", "You cannot buy from your own shops.")
     variant = await session.get(ProductVariant, item.variant_id) if item.variant_id else None
     stock = variant.stock if variant else product.stock if product is not None else 0
     if body.quantity > stock:
@@ -423,7 +431,7 @@ async def update_cart_item(
 @router.delete("/me/cart/items/{cart_item_id}", status_code=204)
 async def delete_cart_item(
     cart_item_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> Response:
     await _lock_user_cart(session, user)
@@ -436,7 +444,7 @@ async def delete_cart_item(
 @router.post("/me/checkout", response_model=OrderRead, status_code=201)
 async def checkout(
     body: CheckoutCreate,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> OrderRead:
     await _lock_user_cart(session, user)
@@ -504,6 +512,10 @@ async def checkout(
         shop = await session.scalar(
             select(Shop).where(Shop.id == product.shop_id).with_for_update()
         )
+        if shop is not None and shop.owner_user_id == user.id:
+            raise APIError(
+                403, "own_shop_purchase_forbidden", "You cannot buy from your own shops."
+            )
         if shop is None or not shop.is_active:
             raise APIError(409, "shop_unavailable", "A shop in your cart is no longer available.")
         variant: ProductVariant | None = None
@@ -637,6 +649,8 @@ async def checkout(
                 fulfillment_id=fulfillment.id,
                 title="New fulfillment order",
                 message=f"Order {order.order_number} is ready for {shop.name} to review.",
+                workspace="vendor",
+                shop_id=shop.id,
             )
         fulfillment.subtotal = fulfillment_subtotal
         session.add(
@@ -678,7 +692,7 @@ async def checkout(
 
 @router.get("/me/orders", response_model=list[OrderRead])
 async def list_customer_orders(
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[OrderRead]:
     orders = await session.scalars(
@@ -693,7 +707,7 @@ async def list_customer_orders(
 @router.get("/me/orders/{order_id}", response_model=OrderRead)
 async def get_customer_order(
     order_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> OrderRead:
     order = await _customer_order(session, user, order_id)
@@ -703,7 +717,7 @@ async def get_customer_order(
 @router.get("/me/orders/{order_id}/invoice", response_model=InvoiceRead)
 async def get_order_invoice(
     order_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> InvoiceRead:
     order = await _customer_order(session, user, order_id)
@@ -725,7 +739,7 @@ async def get_order_invoice(
 @router.post("/me/fulfillment-orders/{fulfillment_id}/cancel", response_model=OrderRead)
 async def cancel_fulfillment(
     fulfillment_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> OrderRead:
     fulfillment = await session.scalar(
@@ -767,7 +781,7 @@ async def cancel_fulfillment(
 @router.post("/me/fulfillment-orders/{fulfillment_id}/returns", response_model=OrderRead)
 async def request_return(
     fulfillment_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> OrderRead:
     fulfillment = await session.scalar(
@@ -815,10 +829,9 @@ async def request_return(
 
 @router.get("/vendor/orders", response_model=VendorFulfillmentPage)
 async def list_vendor_orders(
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_selected_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> VendorFulfillmentPage:
-    shop = await _vendor_shop(session, user)
     total = await session.scalar(
         select(func.count())
         .select_from(FulfillmentOrder)
@@ -842,10 +855,10 @@ async def list_vendor_orders(
 async def update_fulfillment_status(
     fulfillment_id: UUID,
     body: FulfillmentStatusUpdate,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_vendor)],
+    shop: Annotated[Shop, Depends(get_selected_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> FulfillmentOrderRead:
-    shop = await _vendor_shop(session, user)
     fulfillment = await _vendor_fulfillment(session, shop, fulfillment_id)
     transitions = {
         "pending": {"confirmed", "cancelled"},
@@ -968,10 +981,10 @@ async def update_fulfillment_status(
 )
 async def record_cash_refund(
     fulfillment_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_vendor)],
+    shop: Annotated[Shop, Depends(get_selected_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> FulfillmentOrderRead:
-    shop = await _vendor_shop(session, user)
     fulfillment = await _vendor_fulfillment(session, shop, fulfillment_id)
     if fulfillment.status != "returned":
         raise APIError(
@@ -1007,12 +1020,25 @@ async def record_cash_refund(
 
 @router.get("/me/notifications", response_model=list[NotificationRead])
 async def list_notifications(
-    user: Annotated[User, Depends(get_current_user)],
+    context: Annotated[WorkspaceContext, Depends(get_workspace_context)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[NotificationRead]:
+    if context.workspace == "vendor" and context.shop is None:
+        raise APIError(422, "shop_context_required", "Select a shop to continue.")
     notifications = await session.scalars(
         select(OrderNotification)
-        .where(OrderNotification.user_id == user.id)
+        .where(
+            OrderNotification.user_id == context.user.id,
+            (OrderNotification.workspace == "account")
+            | (
+                (OrderNotification.workspace == context.workspace)
+                & (
+                    OrderNotification.shop_id == context.shop.id
+                    if context.shop is not None
+                    else OrderNotification.shop_id.is_(None)
+                )
+            ),
+        )
         .order_by(OrderNotification.created_at.desc())
         .limit(100)
     )
@@ -1022,13 +1048,24 @@ async def list_notifications(
 @router.patch("/me/notifications/{notification_id}/read", response_model=NotificationRead)
 async def mark_notification_read(
     notification_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
+    context: Annotated[WorkspaceContext, Depends(get_workspace_context)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> NotificationRead:
+    if context.workspace == "vendor" and context.shop is None:
+        raise APIError(422, "shop_context_required", "Select a shop to continue.")
     notification = await session.scalar(
         select(OrderNotification).where(
             OrderNotification.id == notification_id,
-            OrderNotification.user_id == user.id,
+            OrderNotification.user_id == context.user.id,
+            (OrderNotification.workspace == "account")
+            | (
+                (OrderNotification.workspace == context.workspace)
+                & (
+                    OrderNotification.shop_id == context.shop.id
+                    if context.shop is not None
+                    else OrderNotification.shop_id.is_(None)
+                )
+            ),
         )
     )
     if notification is None:

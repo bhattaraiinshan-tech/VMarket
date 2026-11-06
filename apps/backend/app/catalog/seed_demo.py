@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.catalog.models import CatalogBrand, CatalogCategory, Product, Shop
 from app.core.config import Settings, get_settings
 from app.db.session import get_engine, get_session_factory
-from app.identity.models import CustomerProfile, User, UserRole, VendorApplication
+from app.identity.models import CustomerProfile, User, UserRole, VendorApplication, VendorProfile
 from app.identity.security import hash_password, verify_password
 
 DEMO_PASSWORD = "VendorDemo2026!"
@@ -355,12 +355,16 @@ async def seed_demo_data(session: AsyncSession) -> None:
         elif not verify_password(DEMO_PASSWORD, user.password_hash):
             raise RuntimeError(f"Refusing to overwrite credentials for existing account {email}.")
 
+        if await session.get(VendorProfile, user.id) is None:
+            session.add(VendorProfile(user_id=user.id, business_name=vendor_seed.business_name))
+            await session.flush()
         shop = await session.scalar(select(Shop).where(Shop.slug == shop_slug))
         if shop is None:
             if await session.scalar(select(Shop.id).where(Shop.owner_user_id == user.id)):
                 raise RuntimeError(f"Account {email} already owns a non-demo shop.")
             shop = Shop(
                 owner_user_id=user.id,
+                slot=1,
                 name=vendor_seed.shop_name,
                 slug=shop_slug,
                 description=(

@@ -2,7 +2,7 @@ from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import EmailStr, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +16,7 @@ class Settings(BaseSettings):
 
     environment: Literal["development", "test", "staging", "production"] = "development"
     debug: bool = False
+    owner_email: EmailStr | None = None
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     database_url: str = "postgresql+asyncpg://vmarket:vmarket-local@localhost:5432/vmarket"
     minio_endpoint: str = "localhost:9000"
@@ -33,6 +34,11 @@ class Settings(BaseSettings):
     mail_from: str = "no-reply@vendors-market.local"
     web_base_url: str = "http://localhost:3000"
     cors_origins: list[str] = ["http://localhost:3000"]
+
+    @field_validator("owner_email")
+    @classmethod
+    def normalize_owner_email(cls, value: str | None) -> str | None:
+        return value.strip().casefold() if value is not None else None
 
     @field_validator("database_url")
     @classmethod

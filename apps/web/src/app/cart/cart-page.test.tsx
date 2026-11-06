@@ -5,7 +5,8 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { installTestWorkspace } from '@/test-workspace';
 
 import CartPage from './cart-page';
 
@@ -50,6 +51,7 @@ afterEach(() => {
 });
 
 describe('cart checkout', () => {
+  beforeEach(() => installTestWorkspace());
   it('shows cart load failures instead of presenting them as an empty cart', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       Response.json(

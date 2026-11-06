@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { WorkspaceProvider } from '@/lib/workspace-context';
 
 export const metadata: Metadata = {
   title: "Vendor's Market",
@@ -15,7 +16,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       {/* Browser extensions such as Grammarly inject body attributes before hydration. */}
-      <body suppressHydrationWarning>{children}</body>
+      <body suppressHydrationWarning>
+        <WorkspaceProvider>{children}</WorkspaceProvider>
+      </body>
     </html>
   );
 }

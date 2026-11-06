@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 import { Product, ProductPage, Shop, requestApi } from '@/lib/api';
+import { browserStorageUrl } from '@/lib/network';
 
 export default function ShopDetails({ slug }: { slug: string }) {
   const [shop, setShop] = useState<Shop | null>(null);
@@ -65,7 +66,9 @@ export default function ShopDetails({ slug }: { slug: string }) {
             aria-label={`${shop.name} logo`}
             className="mb-5 h-20 w-20 rounded-xl bg-cover bg-center bg-white"
             role="img"
-            style={{ backgroundImage: `url("${shop.logo_url}")` }}
+            style={{
+              backgroundImage: `url("${browserStorageUrl(shop.logo_url)}")`,
+            }}
           />
         )}
         <p className="text-sm font-semibold text-emerald-200">

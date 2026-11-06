@@ -150,6 +150,8 @@ class NotificationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    workspace: str
+    shop_id: UUID | None
     order_id: UUID | None
     fulfillment_order_id: UUID | None
     conversation_id: UUID | None

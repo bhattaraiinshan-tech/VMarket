@@ -1,19 +1,14 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import Link from 'next/link';
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api/v1';
-
-type UserProfile = {
-  id: string;
-  email: string;
-  email_verified: boolean;
-  account_status: string;
-  roles: string[];
-  profile: { full_name: string; phone: string | null } | null;
-};
+import { requestApi as request } from '@/lib/api';
+import { useWorkspace } from '@/lib/workspace-context';
+import { browserStorageUrl } from '@/lib/network';
+import {
+  setWorkspaceUser as setUser,
+  type WorkspaceUser as UserProfile,
+} from '@/lib/workspace-state';
 
 type Address = {
   id: string;
@@ -92,43 +87,12 @@ const emptyAddress: AddressDraft = {
   is_default: true,
 };
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const isFormData = init.body instanceof FormData;
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    credentials: 'include',
-    headers: {
-      ...(!isFormData && init.body !== undefined
-        ? { 'Content-Type': 'application/json' }
-        : {}),
-      ...init.headers,
-    },
-  });
-  const payload: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    let message = 'The request could not be completed.';
-    if (typeof payload === 'object' && payload !== null && 'error' in payload) {
-      const error = payload.error;
-      if (
-        typeof error === 'object' &&
-        error !== null &&
-        'message' in error &&
-        typeof error.message === 'string'
-      ) {
-        message = error.message;
-      }
-    }
-    throw new Error(message);
-  }
-  return payload as T;
-}
-
 function inputClassName() {
   return 'mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100';
 }
 
 export default function IdentityPortal() {
-  const [user, setUser] = useState<UserProfile | null>(null);
+  const { user, workspace } = useWorkspace();
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [sessions, setSessions] = useState<AuthSession[]>([]);
   const [applications, setApplications] = useState<VendorApplication[]>([]);
@@ -168,35 +132,54 @@ export default function IdentityPortal() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const loadAccountData = useCallback(async (account: UserProfile) => {
-    setProfileName(account.profile?.full_name ?? '');
-    setProfilePhone(account.profile?.phone ?? '');
-    const [savedAddresses, savedApplications, activeSessions] =
-      await Promise.all([
-        request<Address[]>('/me/addresses'),
-        request<VendorApplication[]>('/vendors/applications/me'),
-        request<AuthSession[]>('/auth/sessions'),
-      ]);
-    setAddresses(savedAddresses);
-    setApplications(savedApplications);
-    setSessions(activeSessions);
-    if (account.roles.includes('admin')) {
-      const [pending, accounts, events] = await Promise.all([
-        request<VendorApplication[]>(
-          '/admin/vendor-applications?status=pending',
-        ),
-        request<AdminAccount[]>('/admin/users'),
-        request<AuditEvent[]>('/admin/audit-logs'),
-      ]);
-      setPendingApplications(pending);
-      setAdminUsers(accounts);
-      setAuditEvents(events);
-    } else {
-      setPendingApplications([]);
-      setAdminUsers([]);
-      setAuditEvents([]);
-    }
-  }, []);
+  useEffect(() => {
+    if (!user) return;
+    const controller = new AbortController();
+    const { signal } = controller;
+    void Promise.all([
+      workspace === 'customer'
+        ? request<Address[]>('/me/addresses', { signal })
+        : Promise.resolve([]),
+      request<VendorApplication[]>('/vendors/applications/me', { signal }),
+      request<AuthSession[]>('/auth/sessions', { signal }),
+    ])
+      .then(async ([savedAddresses, savedApplications, activeSessions]) => {
+        if (signal.aborted) return;
+        setProfileName(user.profile?.full_name ?? '');
+        setProfilePhone(user.profile?.phone ?? '');
+        setAddresses(savedAddresses);
+        setApplications(savedApplications);
+        setSessions(activeSessions);
+        if (workspace === 'admin' && user.roles.includes('admin')) {
+          const [pending, accounts, events] = await Promise.all([
+            request<VendorApplication[]>(
+              '/admin/vendor-applications?status=pending',
+              { signal },
+            ),
+            request<AdminAccount[]>('/admin/users', { signal }),
+            request<AuditEvent[]>('/admin/audit-logs', { signal }),
+          ]);
+          if (signal.aborted) return;
+          setPendingApplications(pending);
+          setAdminUsers(accounts);
+          setAuditEvents(events);
+        } else {
+          setPendingApplications([]);
+          setAdminUsers([]);
+          setAuditEvents([]);
+        }
+      })
+      .catch((cause: unknown) => {
+        if (!(cause instanceof DOMException && cause.name === 'AbortError')) {
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : 'Account data could not be loaded.',
+          );
+        }
+      });
+    return () => controller.abort();
+  }, [user, workspace]);
 
   useEffect(() => {
     const hash = window.location.hash.slice(1);
@@ -225,16 +208,11 @@ export default function IdentityPortal() {
       }, 0);
     }
 
-    void request<UserProfile>('/me')
-      .then(async (account) => {
-        setUser(account);
-        await loadAccountData(account);
-      })
-      .catch(() => undefined);
+    void request<UserProfile>('/me').catch(() => undefined);
     return () => {
       if (resetTimeout !== undefined) window.clearTimeout(resetTimeout);
     };
-  }, [loadAccountData]);
+  }, []);
 
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -266,7 +244,6 @@ export default function IdentityPortal() {
           body: JSON.stringify({ email, password }),
         });
         setUser(account);
-        await loadAccountData(account);
         setMessage('');
       }
     } catch (cause: unknown) {
@@ -480,7 +457,7 @@ export default function IdentityPortal() {
       );
       setAdminDocumentUrls((current) => ({
         ...current,
-        [document.id]: result.url,
+        [document.id]: browserStorageUrl(result.url),
       }));
       setAuditEvents(await request<AuditEvent[]>('/admin/audit-logs'));
     });
@@ -615,7 +592,7 @@ export default function IdentityPortal() {
               </label>
               <button
                 className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
-                disabled={busy}
+                disabled={busy || workspace !== 'customer'}
                 type="submit"
               >
                 Save profile
@@ -649,7 +626,7 @@ export default function IdentityPortal() {
               </label>
               <button
                 className="mt-3 rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-800 hover:bg-red-50 disabled:opacity-60"
-                disabled={busy}
+                disabled={busy || user.roles.includes('admin')}
                 type="submit"
               >
                 Deactivate account
@@ -657,119 +634,121 @@ export default function IdentityPortal() {
             </form>
           </article>
 
-          <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold">Delivery addresses</h2>
-            {addresses.length > 0 ? (
-              <ul className="mt-3 space-y-2">
-                {addresses.map((address) => (
-                  <li
-                    className="rounded-lg bg-slate-50 p-3 text-sm"
-                    key={address.id}
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <span className="font-semibold">
-                          {address.label}
-                          {address.is_default ? ' - Default' : ''}
-                        </span>
-                        <p className="mt-1 text-slate-600">
-                          {address.recipient_name}, {address.street_address},{' '}
-                          {address.city}, {address.province}
-                        </p>
+          {workspace === 'customer' && (
+            <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h2 className="text-lg font-semibold">Delivery addresses</h2>
+              {addresses.length > 0 ? (
+                <ul className="mt-3 space-y-2">
+                  {addresses.map((address) => (
+                    <li
+                      className="rounded-lg bg-slate-50 p-3 text-sm"
+                      key={address.id}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <span className="font-semibold">
+                            {address.label}
+                            {address.is_default ? ' - Default' : ''}
+                          </span>
+                          <p className="mt-1 text-slate-600">
+                            {address.recipient_name}, {address.street_address},{' '}
+                            {address.city}, {address.province}
+                          </p>
+                        </div>
+                        <div className="flex gap-3">
+                          <button
+                            className="font-medium text-emerald-800 underline"
+                            disabled={busy}
+                            onClick={() => editAddress(address)}
+                            type="button"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="font-medium text-red-800 underline"
+                            disabled={busy}
+                            onClick={() => void removeAddress(address)}
+                            type="button"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex gap-3">
-                        <button
-                          className="font-medium text-emerald-800 underline"
-                          disabled={busy}
-                          onClick={() => editAddress(address)}
-                          type="button"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="font-medium text-red-800 underline"
-                          disabled={busy}
-                          onClick={() => void removeAddress(address)}
-                          type="button"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  </li>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-sm text-slate-600">
+                  Add an address to make future checkout faster.
+                </p>
+              )}
+              <form
+                className="mt-5 grid gap-3 sm:grid-cols-2"
+                onSubmit={addAddress}
+              >
+                {(
+                  [
+                    ['label', 'Label'],
+                    ['recipient_name', 'Recipient name'],
+                    ['phone', 'Phone'],
+                    ['province', 'Province'],
+                    ['city', 'City / municipality'],
+                    ['area', 'Area'],
+                    ['street_address', 'Street address'],
+                    ['postal_code', 'Postal code'],
+                  ] as const
+                ).map(([field, label]) => (
+                  <label className="text-sm font-medium" key={field}>
+                    {label}
+                    <input
+                      className={inputClassName()}
+                      onChange={(event) =>
+                        setAddressDraft((current) => ({
+                          ...current,
+                          [field]: event.target.value,
+                        }))
+                      }
+                      required={field !== 'area' && field !== 'postal_code'}
+                      value={addressDraft[field]}
+                    />
+                  </label>
                 ))}
-              </ul>
-            ) : (
-              <p className="mt-2 text-sm text-slate-600">
-                Add an address to make future checkout faster.
-              </p>
-            )}
-            <form
-              className="mt-5 grid gap-3 sm:grid-cols-2"
-              onSubmit={addAddress}
-            >
-              {(
-                [
-                  ['label', 'Label'],
-                  ['recipient_name', 'Recipient name'],
-                  ['phone', 'Phone'],
-                  ['province', 'Province'],
-                  ['city', 'City / municipality'],
-                  ['area', 'Area'],
-                  ['street_address', 'Street address'],
-                  ['postal_code', 'Postal code'],
-                ] as const
-              ).map(([field, label]) => (
-                <label className="text-sm font-medium" key={field}>
-                  {label}
+                <label className="flex items-center gap-2 text-sm sm:col-span-2">
                   <input
-                    className={inputClassName()}
+                    checked={addressDraft.is_default}
                     onChange={(event) =>
                       setAddressDraft((current) => ({
                         ...current,
-                        [field]: event.target.value,
+                        is_default: event.target.checked,
                       }))
                     }
-                    required={field !== 'area' && field !== 'postal_code'}
-                    value={addressDraft[field]}
+                    type="checkbox"
                   />
+                  Make this my default address
                 </label>
-              ))}
-              <label className="flex items-center gap-2 text-sm sm:col-span-2">
-                <input
-                  checked={addressDraft.is_default}
-                  onChange={(event) =>
-                    setAddressDraft((current) => ({
-                      ...current,
-                      is_default: event.target.checked,
-                    }))
-                  }
-                  type="checkbox"
-                />
-                Make this my default address
-              </label>
-              <button
-                className="w-fit rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60 sm:col-span-2"
-                disabled={busy}
-                type="submit"
-              >
-                {editingAddressId ? 'Save address' : 'Add address'}
-              </button>
-              {editingAddressId && (
                 <button
-                  className="w-fit rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50 sm:col-span-2"
+                  className="w-fit rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60 sm:col-span-2"
                   disabled={busy}
-                  onClick={() => {
-                    setEditingAddressId(null);
-                    setAddressDraft(emptyAddress);
-                  }}
-                  type="button"
+                  type="submit"
                 >
-                  Cancel editing
+                  {editingAddressId ? 'Save address' : 'Add address'}
                 </button>
-              )}
-            </form>
-          </article>
+                {editingAddressId && (
+                  <button
+                    className="w-fit rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50 sm:col-span-2"
+                    disabled={busy}
+                    onClick={() => {
+                      setEditingAddressId(null);
+                      setAddressDraft(emptyAddress);
+                    }}
+                    type="button"
+                  >
+                    Cancel editing
+                  </button>
+                )}
+              </form>
+            </article>
+          )}
         </section>
 
         <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -819,7 +798,7 @@ export default function IdentityPortal() {
               {application.review_notes ? ` - ${application.review_notes}` : ''}
             </p>
           ))}
-          {!hasVendorApplication && (
+          {!user.vendor_profile && !hasVendorApplication && (
             <form
               className="mt-5 grid gap-4 sm:grid-cols-2"
               onSubmit={applyAsVendor}
@@ -922,7 +901,7 @@ export default function IdentityPortal() {
           )}
         </section>
 
-        {user.roles.includes('admin') && (
+        {workspace === 'admin' && user.roles.includes('admin') && (
           <div className="mt-6 space-y-6">
             <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
               <h2 className="text-lg font-semibold">

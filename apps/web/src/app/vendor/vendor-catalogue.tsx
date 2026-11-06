@@ -13,6 +13,8 @@ import {
   Shop,
   requestApi,
 } from '@/lib/api';
+import { useWorkspaceShops } from '@/lib/workspace-context';
+import { browserStorageUrl } from '@/lib/network';
 
 type ShopDraft = {
   name: string;
@@ -297,6 +299,7 @@ function VariantManager({
 }
 
 export default function VendorCatalogue() {
+  const { refresh: refreshShops } = useWorkspaceShops();
   const [shop, setShop] = useState<Shop | null>(null);
   const [shopDraft, setShopDraft] = useState<ShopDraft>(emptyShop);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -386,6 +389,7 @@ export default function VendorCatalogue() {
 
   async function submitShop(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!shop) return;
     setError('');
     setMessage('');
     setBusy(true);
@@ -398,7 +402,7 @@ export default function VendorCatalogue() {
     };
     try {
       const updated = await requestApi<Shop>('/vendor/shop', {
-        method: shop ? 'PATCH' : 'POST',
+        method: 'PATCH',
         body: JSON.stringify(body),
       });
       setShop(updated);
@@ -407,7 +411,8 @@ export default function VendorCatalogue() {
         latitude: updated.latitude ?? '',
         longitude: updated.longitude ?? '',
       });
-      setMessage(shop ? 'Shop profile updated.' : 'Shop profile created.');
+      await refreshShops();
+      setMessage('Shop profile updated.');
     } catch (cause: unknown) {
       setError(
         cause instanceof Error
@@ -643,7 +648,7 @@ export default function VendorCatalogue() {
             disabled={busy}
             type="submit"
           >
-            {shop ? 'Save shop profile' : 'Create shop'}
+            Save selected shop profile
           </button>
         </form>
         {shop && (
@@ -653,7 +658,9 @@ export default function VendorCatalogue() {
                 aria-label={`${shop.name} logo`}
                 className="mb-3 h-16 w-16 rounded-lg bg-cover bg-center bg-slate-100"
                 role="img"
-                style={{ backgroundImage: `url("${shop.logo_url}")` }}
+                style={{
+                  backgroundImage: `url("${browserStorageUrl(shop.logo_url)}")`,
+                }}
               />
             )}
             <label className="block text-sm font-medium text-slate-800">

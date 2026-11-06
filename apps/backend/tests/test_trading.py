@@ -16,7 +16,7 @@ from app.catalog.seed_demo import seed_demo_data
 from app.core.config import get_settings
 from app.db.base import Base
 from app.db.session import get_session
-from app.identity.models import AuthSession, User, UserRole
+from app.identity.models import AuthSession, User, UserRole, VendorProfile
 from app.identity.security import hash_token
 from app.main import create_app
 from app.trading.models import (
@@ -64,6 +64,7 @@ async def trading_client() -> AsyncIterator[TradingClient]:
         await session.flush()
         for name, user in users.items():
             session.add(UserRole(user_id=user.id, role="vendor"))
+            session.add(VendorProfile(user_id=user.id, business_name=name))
             session.add(
                 AuthSession(
                     user_id=user.id,
@@ -77,6 +78,7 @@ async def trading_client() -> AsyncIterator[TradingClient]:
         shops: dict[str, Shop] = {}
         for name, user in users.items():
             shop = Shop(
+                slot=1,
                 owner_user_id=user.id,
                 name=f"{name.title()} Market",
                 slug=f"{name}-market-trading",
@@ -130,12 +132,18 @@ async def trading_client() -> AsyncIterator[TradingClient]:
     app.dependency_overrides[get_session] = override_session
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         client.cookies.set("vmarket_session", tokens["buyer"])
+        client.headers["X-VMarket-Workspace"] = "vendor"
+        client.headers["X-VMarket-Shop-Id"] = str(shops["buyer"].id)
+        for name, shop in shops.items():
+            client.headers[f"X-Test-Shop-{name}"] = str(shop.id)
         yield client, factory, ids
     await engine.dispose()
 
 
 def _sign_in(client: AsyncClient, user: str) -> None:
     client.cookies.set("vmarket_session", f"trading-{user}-session-token")
+    client.headers["X-VMarket-Workspace"] = "vendor"
+    client.headers["X-VMarket-Shop-Id"] = client.headers[f"X-Test-Shop-{user}"]
 
 
 async def _create_rfq(client: AsyncClient, listing_id: UUID) -> str:
@@ -441,6 +449,63 @@ async def test_vendor_stock_transfer_requires_receiver_confirmation(
         assert destination is not None and destination.stock == 112
         assert listing is not None and listing.available_quantity == 92
         assert transfer is not None and transfer.status == "received"
+
+
+@pytest.mark.asyncio
+async def test_same_owner_trade_is_blocked_but_shop_transfers_remain_scoped(
+    trading_client: TradingClient,
+) -> None:
+    client, factory, ids = trading_client
+    async with factory() as session:
+        destination = await session.get(Shop, ids["seller_shop"])
+        assert destination is not None
+        destination.owner_user_id = ids["buyer"]
+        destination.slot = 2
+        await session.commit()
+    rfq = await client.post(
+        "/api/v1/trade/rfqs",
+        json={
+            "listing_id": str(ids["listing"]),
+            "quantity": 20,
+            "delivery_terms": "Collect.",
+            "message": "Please quote.",
+        },
+    )
+    assert rfq.status_code == 422
+    assert rfq.json()["error"]["code"] == "self_trade_not_allowed"
+    response = await client.post(
+        "/api/v1/trade/transfers",
+        json={
+            "destination_shop_id": str(ids["seller_shop"]),
+            "source_product_id": str(ids["buyer_product"]),
+            "destination_product_id": str(ids["seller_product"]),
+            "quantity": 7,
+            "delivery_terms": "Move between owned branches.",
+        },
+    )
+    assert response.status_code == 201, response.text
+    transfer_id = response.json()["id"]
+    wrong_shop = await client.post(
+        f"/api/v1/trade/transfers/{transfer_id}/status", json={"status": "approved"}
+    )
+    assert wrong_shop.status_code == 409
+    for selected_shop, status in (
+        ("seller_shop", "approved"),
+        ("buyer_shop", "shipped"),
+        ("seller_shop", "received"),
+    ):
+        client.headers["X-VMarket-Shop-Id"] = str(ids[selected_shop])
+        changed = await client.post(
+            f"/api/v1/trade/transfers/{transfer_id}/status", json={"status": status}
+        )
+        assert changed.status_code == 200, changed.text
+    async with factory() as session:
+        source = await session.get(Product, ids["buyer_product"])
+        destination_product = await session.get(Product, ids["seller_product"])
+        assert source is not None and destination_product is not None
+        assert source.stock == 93
+        assert destination_product.stock == 107
+        assert source.stock + destination_product.stock == 200
 
 
 @pytest.mark.asyncio

@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -136,3 +137,39 @@ async def test_unexpected_errors_are_sanitized_and_logged(
     assert response.headers["Access-Control-Allow-Origin"] == "http://localhost:3000"
     assert response.headers["Access-Control-Allow-Credentials"] == "true"
     assert any(record.getMessage() == "Unhandled request error" for record in caplog.records)
+
+
+@pytest.mark.parametrize("owner_ready", [False, True])
+async def test_production_readiness_requires_a_verified_active_owner(
+    monkeypatch: pytest.MonkeyPatch,
+    owner_ready: bool,
+) -> None:
+    monkeypatch.setattr(health, "get_settings", lambda: SimpleNamespace(environment="production"))
+    monkeypatch.setattr(health, "check_database", AsyncMock(return_value=True))
+    monkeypatch.setattr(health, "check_minio", lambda: True)
+    owner_check = AsyncMock(return_value=owner_ready)
+    monkeypatch.setattr(health, "check_owner", owner_check)
+    async with AsyncClient(
+        transport=ASGITransport(app=create_app()),
+        base_url="http://test",
+    ) as client:
+        response = await client.get("/api/v1/health/ready")
+    assert response.status_code == (200 if owner_ready else 503)
+    assert response.json()["dependencies"]["owner"] == ("ok" if owner_ready else "unprovisioned")
+    owner_check.assert_awaited_once()
+
+
+async def test_workspace_headers_are_allowed_by_cors() -> None:
+    async with AsyncClient(
+        transport=ASGITransport(app=create_app()),
+        base_url="http://test",
+    ) as client:
+        response = await client.options(
+            "/api/v1/vendor/shops",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "X-VMarket-Workspace,X-VMarket-Shop-Id",
+            },
+        )
+    assert response.status_code == 200

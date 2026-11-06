@@ -74,15 +74,94 @@ password-reset links without a third-party provider. Configure `VMARKET_MAIL_HOS
 `VMARKET_WEB_BASE_URL` for the deployment's email provider and public web origin. Staging and production require a
 remote authenticated SMTP service using STARTTLS and an HTTPS web origin.
 
-To grant platform administrator access to an existing, active, verified account, run this operator-only command after
-the database has been migrated:
+To provision the **sole platform owner**, privately configure `VMARKET_OWNER_EMAIL` to the creator's existing,
+active, email-verified account, then run this operator-only command after migration:
 
 ```powershell
 vmarket-grant-admin admin@example.com
 ```
 
-The command records the privilege grant in the append-only audit log. Admin access cannot be self-registered through the
-API. See `/docs` for the versioned identity, profile, vendor verification, and admin endpoints.
+The supplied email must match that configuration. Provisioning binds the owner's immutable account ID once;
+rerunning for the same owner is safe, but changing configuration cannot replace the owner. There is no public admin
+signup, promotion, delegation, or ownership-transfer endpoint. Legacy `admin` role rows do not authorize access.
+The command records provisioning in the append-only audit log. The owner cannot deactivate or suspend its own account;
+password recovery restores the same identity. Staging/production readiness returns 503 until the owner is provisioned,
+verified, and active. See `/docs` for versioned endpoints.
+
+## Profiles, workspaces, and shops
+
+One login may hold **one customer profile and one approved vendor profile**. These share authentication, not permissions.
+Use the workspace selector for Customer, Vendor, or (owner only) Admin mode. Selections are tab-specific, so another tab
+can stay in a different workspace. Vendor mode requires explicit shop selection for shop-bound actions; a vendor may
+own **at most three shops**, counting inactive shops. Shop deletion and ownership transfer are not included.
+
+Protected API requests identify their context with `X-VMarket-Workspace: customer|vendor|admin` and, for shop-bound
+vendor actions, `X-VMarket-Shop-Id: <uuid>`. The server validates the session, profile, and resource ownership;
+headers never grant permissions. Missing context is rejected, and neither a mode nor the first owned shop is guessed.
+Public browsing and account-wide authentication/session/export operations are context-neutral. Vendor applications
+remain available as onboarding before approval. `/api/v1/vendor/shops` lists or creates shops; existing business
+endpoints operate on the explicitly selected shop. WebSocket connections use non-secret `workspace` and `shop_id`
+query selectors, with the same cookie/session authorization.
+
+Customer checkout, addresses, wishlist, orders, and reviews require Customer mode. Vendor catalog, fulfillment,
+wholesale, and review responses require Vendor mode and the selected shop. Admin mode is separate and does not
+implicitly authorize customer/vendor actions. Messages, notifications, support, and live updates are scoped accordingly.
+Buying/reviewing your own shops (including wholesale between your own shops) is prohibited. Explicit stock transfers
+between distinct shops you own remain allowed.
+
+### Migration and deployment safety
+
+Deploy backend and frontend together: old clients without workspace context intentionally cannot perform protected
+operations. Back up the database and rehearse the new Alembic migration on an isolated copy before allowing traffic.
+Existing identity/shop IDs, both profiles, orders, financial records, and audit history are retained. The migration
+stops on inconsistent vendor records, ambiguous workspace history, excess shops, or unresolved legacy admin identity;
+review its diagnostics instead of deleting records or guessing mappings. Set the verified creator identity privately
+before reconciling existing administrators. Never run destructive migration tests against the working database.
+After upgrade, provision/verify the owner and check readiness before opening traffic. A downgrade must refuse to lose
+multi-shop or workspace history: restore a compatible verified backup or deploy a forward fix instead.
+
+For ambiguous historical notifications/support tickets, review the original record and prepare a private JSON file:
+
+```json
+{
+  "order_notifications": {
+    "00000000-0000-4000-8000-000000000001": {
+      "workspace": "vendor",
+      "shop_id": "00000000-0000-4000-8000-000000000002",
+      "reason": "Reviewed original business correspondence"
+    }
+  },
+  "support_tickets": {
+    "00000000-0000-4000-8000-000000000003": {
+      "workspace": "customer",
+      "shop_id": null,
+      "reason": "Reviewed original customer request"
+    }
+  }
+}
+```
+
+Replace the example IDs with reviewed record/shop IDs; omit unused top-level sections. Do not commit this file.
+With application writers stopped, run from the repository root:
+
+```powershell
+alembic -c apps\backend\alembic.ini -x "workspace_map=C:\private\reviewed-workspaces.json" upgrade head
+```
+
+The migration validates each mapping and records reconciliation decisions. An unsafe downgrade is refused if any
+vendor owns multiple shops or any vendor-profile, owner-binding, notification, or support-ticket rows would lose their
+new information.
+
+PostgreSQL-specific migration and concurrency checks are opt-in. Point the following variable at a **test database**
+whose user can create schemas, then run:
+
+```powershell
+$env:VMARKET_MIGRATION_TEST_DATABASE_URL = 'postgresql+asyncpg://<user>:<password>@<host>:<port>/<database>'
+python -m pytest apps\backend\tests\test_profile_workspace_migration.py -q
+Remove-Item Env:\VMARKET_MIGRATION_TEST_DATABASE_URL
+```
+
+These tests isolate and clean up uniquely named schemas; never substitute a production database.
 
 For local marketplace development, seed 10 approved vendor accounts and 20 approved sample products after migrating
 the database:

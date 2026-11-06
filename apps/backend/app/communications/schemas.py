@@ -141,6 +141,8 @@ class SupportTicketRead(BaseModel):
 
     id: UUID
     created_by_id: UUID
+    workspace: Literal["customer", "vendor"]
+    shop_id: UUID | None
     order_id: UUID | None
     kind: str
     subject: str

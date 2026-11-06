@@ -14,7 +14,16 @@ from sqlalchemy.pool import StaticPool
 from app.catalog.models import Product
 from app.db.base import Base
 from app.db.session import get_session
-from app.identity.models import AuditLog, AuthSession, User, UserRole, VendorApplication
+from app.identity.models import (
+    AuditLog,
+    AuthSession,
+    CustomerProfile,
+    PlatformOwner,
+    User,
+    UserRole,
+    VendorApplication,
+    VendorProfile,
+)
 from app.identity.security import hash_token
 from app.main import create_app
 
@@ -52,6 +61,9 @@ async def catalog_client() -> AsyncIterator[CatalogClient]:
         await session.flush()
         for name, user in users.items():
             session.add(UserRole(user_id=user.id, role="customer"))
+            session.add(CustomerProfile(user_id=user.id, full_name=name))
+            if name == "admin":
+                session.add(PlatformOwner(user_id=user.id))
             if name in {"admin", "vendor", "other"}:
                 session.add(
                     UserRole(user_id=user.id, role="admin" if name == "admin" else "vendor")
@@ -64,6 +76,7 @@ async def catalog_client() -> AsyncIterator[CatalogClient]:
                 )
             )
         for name in ("vendor", "other"):
+            session.add(VendorProfile(user_id=users[name].id, business_name=name))
             session.add(
                 VendorApplication(
                     user_id=users[name].id,
@@ -88,6 +101,16 @@ async def catalog_client() -> AsyncIterator[CatalogClient]:
 
 async def _sign_in(client: AsyncClient, token: str) -> None:
     client.cookies.set("vmarket_session", token)
+    name = token.split("-")[1]
+    client.headers.pop("X-VMarket-Shop-Id", None)
+    client.headers["X-VMarket-Workspace"] = (
+        "admin" if name == "admin" else "customer" if name == "customer" else "vendor"
+    )
+    if name in {"vendor", "other"}:
+        shops = await client.get("/api/v1/vendor/shops")
+        assert shops.status_code == 200
+        if shops.json():
+            client.headers["X-VMarket-Shop-Id"] = shops.json()[0]["id"]
 
 
 @pytest.mark.asyncio
@@ -157,6 +180,7 @@ async def test_catalogue_moderation_discovery_and_wishlist(
     )
     assert shop_response.status_code == 201
     shop_id = shop_response.json()["id"]
+    client.headers["X-VMarket-Shop-Id"] = shop_id
     assert shop_response.json()["slug"].startswith("kathmandu-home-store-")
     assert shop_response.json()["latitude"] == "27.717200"
 
@@ -314,6 +338,7 @@ async def test_catalogue_moderation_discovery_and_wishlist(
         },
     )
     assert outsider_shop.status_code == 201
+    client.headers["X-VMarket-Shop-Id"] = outsider_shop.json()["id"]
     unauthorized = await client.patch(
         f"/api/v1/vendor/products/{product['id']}",
         json={"price": "1.00"},
@@ -321,6 +346,8 @@ async def test_catalogue_moderation_discovery_and_wishlist(
     assert unauthorized.status_code == 404
 
     await _sign_in(client, "catalog-vendor-session-token")
+    client.headers["X-VMarket-Workspace"] = "customer"
+    client.headers.pop("X-VMarket-Shop-Id", None)
     assert (await client.post(f"/api/v1/me/wishlist/{product['id']}")).status_code == 204
     assert (await client.post(f"/api/v1/me/wishlist/{product['id']}")).status_code == 204
     wishlist = await client.get("/api/v1/me/wishlist")
@@ -367,3 +394,53 @@ async def test_catalogue_requires_vendor_approval_and_valid_location(
             },
         )
     ).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_three_shop_limit_and_explicit_shop_authorization(
+    catalog_client: CatalogClient,
+) -> None:
+    client, factory, _ = catalog_client
+    await _sign_in(client, "catalog-vendor-session-token")
+    shop_ids: list[str] = []
+    for index in range(3):
+        created = await client.post(
+            "/api/v1/vendor/shops",
+            json={"name": f"Shop {index}", "city": "Kathmandu", "province": "Bagmati"},
+        )
+        assert created.status_code == 201, created.text
+        shop_ids.append(created.json()["id"])
+    from app.catalog.models import Shop
+
+    async with factory() as session:
+        shop = await session.get(Shop, UUID(shop_ids[0]))
+        assert shop is not None
+        shop.is_active = False
+        await session.commit()
+    fourth = await client.post(
+        "/api/v1/vendor/shops",
+        json={"name": "Fourth Shop", "city": "Kathmandu", "province": "Bagmati"},
+    )
+    assert fourth.status_code == 409
+    assert fourth.json()["error"]["code"] == "shop_limit_reached"
+    assert len((await client.get("/api/v1/vendor/shops")).json()) == 3
+    assert (await client.get("/api/v1/vendor/shop")).status_code == 422
+    client.headers["X-VMarket-Shop-Id"] = shop_ids[1]
+    assert (await client.get("/api/v1/vendor/shop")).json()["id"] == shop_ids[1]
+    changed = await client.patch(
+        f"/api/v1/vendor/shops/{shop_ids[1]}", json={"name": "Renamed selected branch"}
+    )
+    assert changed.status_code == 200
+    assert changed.json()["name"] == "Renamed selected branch"
+    assert (await client.get(f"/api/v1/vendor/shops/{shop_ids[2]}")).status_code == 404
+    assert (
+        await client.patch(f"/api/v1/vendor/shops/{shop_ids[2]}", json={"name": "Wrong branch"})
+    ).status_code == 404
+    client.headers["X-VMarket-Workspace"] = "customer"
+    client.headers.pop("X-VMarket-Shop-Id")
+    assert (await client.get("/api/v1/vendor/shop")).status_code == 403
+    client.headers.pop("X-VMarket-Workspace")
+    assert (await client.get("/api/v1/me/wishlist")).status_code == 422
+    await _sign_in(client, "catalog-other-session-token")
+    client.headers["X-VMarket-Shop-Id"] = shop_ids[1]
+    assert (await client.get("/api/v1/vendor/products")).status_code == 404

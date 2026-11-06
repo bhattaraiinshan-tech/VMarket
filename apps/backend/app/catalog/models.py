@@ -86,12 +86,18 @@ class Shop(Base):
             name="ck_shops_longitude_range",
         ),
         Index("ix_shops_location", "province", "city"),
+        CheckConstraint("slot BETWEEN 1 AND 3", name="ck_shops_slot"),
+        UniqueConstraint("owner_user_id", "slot", name="uq_shops_owner_slot"),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     owner_user_id: Mapped[UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        ForeignKey("vendor_profiles.user_id", ondelete="RESTRICT"),
+        index=True,
     )
+    slot: Mapped[int] = mapped_column(Integer, nullable=False)
     name: Mapped[str] = mapped_column(String(160))
     slug: Mapped[str] = mapped_column(String(180), unique=True, index=True)
     description: Mapped[str | None] = mapped_column(Text)

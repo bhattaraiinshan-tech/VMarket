@@ -51,3 +51,12 @@ def test_cors_rejects_wildcard_origins() -> None:
 def test_minio_public_and_private_buckets_must_be_distinct() -> None:
     with pytest.raises(ValidationError, match="must be non-empty and distinct"):
         Settings(_env_file=None, minio_private_bucket="PRODUCT-MEDIA")
+
+
+def test_owner_identity_is_optional_but_validated_and_normalized() -> None:
+    assert Settings(_env_file=None).owner_email is None
+    assert Settings(_env_file=None, owner_email="Creator@Example.com").owner_email == (
+        "creator@example.com"
+    )
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, owner_email="not-an-email")

@@ -17,7 +17,7 @@ from app.catalog.seed_demo import (
 )
 from app.core.config import Settings
 from app.db.base import Base
-from app.identity.models import User, UserRole, VendorApplication
+from app.identity.models import PlatformOwner, User, UserRole, VendorApplication, VendorProfile
 from app.identity.security import verify_password
 
 
@@ -44,6 +44,8 @@ async def test_demo_seed_is_complete_and_idempotent(session: AsyncSession) -> No
 
     assert await session.scalar(select(func.count()).select_from(User)) == len(VENDORS)
     assert await session.scalar(select(func.count()).select_from(Shop)) == len(VENDORS)
+    assert await session.scalar(select(func.count()).select_from(VendorProfile)) == len(VENDORS)
+    assert await session.scalar(select(func.count()).select_from(PlatformOwner)) == 0
     assert await session.scalar(select(func.count()).select_from(Product)) == len(PRODUCTS)
     assert await session.scalar(select(func.count()).select_from(CatalogBrand)) == 5
     assert await session.scalar(select(func.count()).select_from(CatalogCategory)) == len(

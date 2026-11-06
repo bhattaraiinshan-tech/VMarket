@@ -47,8 +47,13 @@ from app.catalog.schemas import (
 from app.core.config import get_settings
 from app.core.errors import APIError
 from app.db.session import get_session
-from app.identity.dependencies import get_current_admin, get_current_user
-from app.identity.models import AuditLog, User, UserRole, VendorApplication
+from app.identity.dependencies import (
+    get_current_admin,
+    get_current_customer,
+    get_current_vendor,
+    get_selected_shop,
+)
+from app.identity.models import AuditLog, User, VendorProfile
 from app.storage.client import get_minio_client
 
 logger = logging.getLogger(__name__)
@@ -78,6 +83,8 @@ def _shop_read(shop: Shop, distance_km: float | None = None) -> ShopRead:
     logo_url = _public_url(shop.logo_object_name) if shop.logo_object_name else None
     return ShopRead(
         id=shop.id,
+        slot=shop.slot,
+        is_active=shop.is_active,
         name=shop.name,
         slug=shop.slug,
         description=shop.description,
@@ -182,15 +189,6 @@ async def _product_reads(session: AsyncSession, products: list[Product]) -> list
             )
         )
     return result
-
-
-async def _owned_shop(session: AsyncSession, user: User) -> Shop:
-    shop = await session.scalar(select(Shop).where(Shop.owner_user_id == user.id))
-    if shop is None:
-        raise APIError(404, "shop_not_found", "Create a shop profile before managing listings.")
-    if not any(role.role == "vendor" for role in user.roles):
-        raise APIError(403, "vendor_required", "An approved vendor account is required.")
-    return shop
 
 
 async def _owned_product(
@@ -604,34 +602,51 @@ async def get_shop(
 
 @router.get("/vendor/shop", response_model=ShopRead)
 async def get_vendor_shop(
-    user: Annotated[User, Depends(get_current_user)],
-    session: Annotated[AsyncSession, Depends(get_session)],
+    shop: Annotated[Shop, Depends(get_selected_shop)],
 ) -> ShopRead:
-    return _shop_read(await _owned_shop(session, user))
+    return _shop_read(shop)
 
 
+@router.get("/vendor/shops", response_model=list[ShopRead])
+async def list_vendor_shops(
+    user: Annotated[User, Depends(get_current_vendor)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[ShopRead]:
+    shops = await session.scalars(
+        select(Shop).where(Shop.owner_user_id == user.id).order_by(Shop.slot)
+    )
+    return [_shop_read(shop) for shop in shops]
+
+
+@router.get("/vendor/shops/{shop_id}", response_model=ShopRead)
+async def get_selected_vendor_shop(
+    shop_id: UUID,
+    shop: Annotated[Shop, Depends(get_selected_shop)],
+) -> ShopRead:
+    if shop.id != shop_id:
+        raise APIError(404, "shop_not_found", "The selected shop was not found.")
+    return _shop_read(shop)
+
+
+@router.post("/vendor/shops", response_model=ShopRead, status_code=201)
 @router.post("/vendor/shop", response_model=ShopRead, status_code=201)
 async def create_vendor_shop(
     body: ShopCreate,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_vendor)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ShopRead:
-    role = await session.get(UserRole, (user.id, "vendor"))
-    application = await session.scalar(
-        select(VendorApplication).where(
-            VendorApplication.user_id == user.id,
-            VendorApplication.status == "approved",
-        )
+    profile = await session.scalar(
+        select(VendorProfile).where(VendorProfile.user_id == user.id).with_for_update()
     )
-    if role is None or application is None:
-        raise APIError(
-            403, "approved_vendor_required", "An approved vendor application is required."
-        )
-    existing = await session.scalar(select(Shop.id).where(Shop.owner_user_id == user.id))
-    if existing is not None:
-        raise APIError(409, "shop_already_exists", "This vendor already has a shop profile.")
+    if profile is None:
+        raise APIError(403, "approved_vendor_required", "An approved vendor profile is required.")
+    slots = set(await session.scalars(select(Shop.slot).where(Shop.owner_user_id == user.id)))
+    free_slots = sorted({1, 2, 3} - slots)
+    if not free_slots:
+        raise APIError(409, "shop_limit_reached", "A vendor can own at most three shops.")
     shop = Shop(
         owner_user_id=user.id,
+        slot=free_slots[0],
         name=body.name,
         slug=_slug(body.name),
         description=body.description,
@@ -654,10 +669,9 @@ async def create_vendor_shop(
 @router.patch("/vendor/shop", response_model=ShopRead)
 async def update_vendor_shop(
     body: ShopUpdate,
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_selected_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ShopRead:
-    shop = await _owned_shop(session, user)
     changes = body.model_dump(exclude_unset=True)
     for field, value in changes.items():
         setattr(shop, field, value)
@@ -672,14 +686,25 @@ async def update_vendor_shop(
     return _shop_read(shop)
 
 
+@router.patch("/vendor/shops/{shop_id}", response_model=ShopRead)
+async def update_selected_vendor_shop(
+    shop_id: UUID,
+    body: ShopUpdate,
+    shop: Annotated[Shop, Depends(get_selected_shop)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ShopRead:
+    if shop.id != shop_id:
+        raise APIError(404, "shop_not_found", "The selected shop was not found.")
+    return await update_vendor_shop(body, shop, session)
+
+
 @router.get("/vendor/products", response_model=ProductPage)
 async def list_vendor_products(
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_selected_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 24,
 ) -> ProductPage:
-    shop = await _owned_shop(session, user)
     total = (
         await session.scalar(
             select(func.count()).select_from(Product).where(Product.shop_id == shop.id)
@@ -706,10 +731,10 @@ async def list_vendor_products(
 @router.post("/vendor/products", response_model=ProductRead, status_code=201)
 async def create_vendor_product(
     body: ProductCreate,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_vendor)],
+    shop: Annotated[Shop, Depends(get_selected_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ProductRead:
-    shop = await _owned_shop(session, user)
     category = await session.get(CatalogCategory, body.category_id)
     if category is None or not category.is_active:
         raise APIError(422, "invalid_category", "Select an active product category.")
@@ -745,10 +770,10 @@ async def create_vendor_product(
 async def update_vendor_product(
     product_id: UUID,
     body: ProductUpdate,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_vendor)],
+    shop: Annotated[Shop, Depends(get_selected_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ProductRead:
-    shop = await _owned_shop(session, user)
     product = await _owned_product(session, shop, product_id)
     changes = body.model_dump(exclude_unset=True, exclude_none=True)
     if "brand_id" in body.model_fields_set and body.brand_id is None:
@@ -801,10 +826,9 @@ async def update_vendor_product(
 async def create_product_variant(
     product_id: UUID,
     body: ProductVariantCreate,
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_selected_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ProductVariantRead:
-    shop = await _owned_shop(session, user)
     product = await _owned_product(session, shop, product_id)
     await _validate_category_attributes(session, product.category_id, body.attributes, variant=True)
     variant = ProductVariant(
@@ -835,10 +859,9 @@ async def update_product_variant(
     product_id: UUID,
     variant_id: UUID,
     body: ProductVariantUpdate,
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_selected_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ProductVariantRead:
-    shop = await _owned_shop(session, user)
     product = await _owned_product(session, shop, product_id)
     variant = await session.scalar(
         select(ProductVariant).where(
@@ -875,10 +898,9 @@ async def update_product_variant(
 async def delete_product_variant(
     product_id: UUID,
     variant_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_selected_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> None:
-    shop = await _owned_shop(session, user)
     product = await _owned_product(session, shop, product_id)
     variant = await session.scalar(
         select(ProductVariant).where(
@@ -934,12 +956,11 @@ async def _upload_public_image(
 )
 async def upload_product_image(
     product_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_selected_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
     file: Annotated[UploadFile, File()],
     alt_text: Annotated[str, Query(max_length=180)] = "",
 ) -> ProductImageRead:
-    shop = await _owned_shop(session, user)
     product = await _owned_product(session, shop, product_id)
     object_name, _ = await _upload_public_image(file, f"products/{product.id}")
     product.status = "pending"
@@ -974,11 +995,10 @@ async def upload_product_image(
 
 @router.post("/vendor/shop/logo", response_model=ShopRead)
 async def upload_shop_logo(
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_selected_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
     file: Annotated[UploadFile, File()],
 ) -> ShopRead:
-    shop = await _owned_shop(session, user)
     object_name, _ = await _upload_public_image(file, f"shops/{shop.id}")
     previous_object_name = shop.logo_object_name
     shop.logo_object_name = object_name
@@ -1063,7 +1083,7 @@ async def moderate_product(
 
 @router.get("/me/wishlist", response_model=list[ProductRead])
 async def list_wishlist(
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[ProductRead]:
     product_ids = await session.scalars(
@@ -1097,7 +1117,7 @@ async def list_wishlist(
 @router.post("/me/wishlist/{product_id}", status_code=204)
 async def add_wishlist_item(
     product_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> None:
     product = await session.scalar(
@@ -1139,7 +1159,7 @@ async def add_wishlist_item(
 @router.delete("/me/wishlist/{product_id}", status_code=204)
 async def remove_wishlist_item(
     product_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> None:
     item = await session.scalar(

@@ -24,7 +24,9 @@ from app.identity.dependencies import (
     AuthenticatedUser,
     get_current_admin,
     get_current_auth,
+    get_current_customer,
     get_current_user,
+    user_capabilities,
 )
 from app.identity.email import send_identity_email
 from app.identity.models import (
@@ -37,6 +39,7 @@ from app.identity.models import (
     UserRole,
     VendorApplication,
     VendorDocument,
+    VendorProfile,
 )
 from app.identity.schemas import (
     AccountSuspension,
@@ -60,6 +63,7 @@ from app.identity.schemas import (
     VendorApplicationCreate,
     VendorApplicationRead,
     VendorDecision,
+    VendorProfileRead,
 )
 from app.identity.security import create_opaque_token, hash_password, hash_token, verify_password
 from app.storage.client import get_minio_client
@@ -79,8 +83,11 @@ def _user_read(user: User) -> UserRead:
         email=user.email,
         email_verified=user.email_verified,
         account_status=user.account_status,
-        roles=[role.role for role in user.roles],
+        roles=user_capabilities(user),
         profile=ProfileRead.model_validate(user.profile) if user.profile else None,
+        vendor_profile=(
+            VendorProfileRead.model_validate(user.vendor_profile) if user.vendor_profile else None
+        ),
         created_at=user.created_at,
     )
 
@@ -287,7 +294,12 @@ async def login(
     await session.refresh(user)
     user = await session.scalar(
         select(User)
-        .options(selectinload(User.roles), selectinload(User.profile))
+        .options(
+            selectinload(User.roles),
+            selectinload(User.profile),
+            selectinload(User.vendor_profile),
+            selectinload(User.owner_binding),
+        )
         .where(User.id == user.id)
     )
     if user is None:
@@ -477,7 +489,7 @@ async def read_me(user: Annotated[User, Depends(get_current_user)]) -> UserRead:
 @router.patch("/me", response_model=UserRead, summary="Update the current profile")
 async def update_me(
     body: ProfileUpdate,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> UserRead:
     if user.profile is None:
@@ -499,7 +511,7 @@ async def update_me(
 
 @router.get("/me/addresses", response_model=list[AddressRead], summary="List delivery addresses")
 async def list_addresses(
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[AddressRead]:
     addresses = await session.scalars(
@@ -518,7 +530,7 @@ async def list_addresses(
 )
 async def create_address(
     body: AddressCreate,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> AddressRead:
     existing = await session.scalar(
@@ -554,7 +566,7 @@ async def create_address(
 async def update_address(
     address_id: UUID,
     body: AddressCreate,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> AddressRead:
     address = await session.scalar(
@@ -608,7 +620,7 @@ async def update_address(
 @router.delete("/me/addresses/{address_id}", response_model=MessageResponse)
 async def delete_address(
     address_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> MessageResponse:
     address = await session.scalar(
@@ -658,6 +670,9 @@ async def export_personal_data(
             if user.profile
             else None
         ),
+        "vendor_profile": (
+            {"business_name": user.vendor_profile.business_name} if user.vendor_profile else None
+        ),
         "addresses": [
             AddressRead.model_validate(item).model_dump(mode="json") for item in addresses
         ],
@@ -677,6 +692,10 @@ async def deactivate_account(
     session: Annotated[AsyncSession, Depends(get_session)],
     response: Response,
 ) -> MessageResponse:
+    if auth.user.owner_binding is not None:
+        raise APIError(
+            409, "owner_account_protected", "The platform owner account cannot be deactivated."
+        )
     if body.email != auth.user.email or not await run_in_threadpool(
         verify_password, body.password, auth.user.password_hash
     ):
@@ -881,14 +900,22 @@ async def admin_list_users(
 ) -> list[AdminUserRead]:
     _ = admin
     users = await session.scalars(
-        select(User).options(selectinload(User.roles)).order_by(User.created_at.desc()).limit(limit)
+        select(User)
+        .options(
+            selectinload(User.roles),
+            selectinload(User.profile),
+            selectinload(User.vendor_profile),
+            selectinload(User.owner_binding),
+        )
+        .order_by(User.created_at.desc())
+        .limit(limit)
     )
     return [
         AdminUserRead(
             id=user.id,
             email=user.email,
             account_status=user.account_status,
-            roles=[role.role for role in user.roles],
+            roles=user_capabilities(user),
             created_at=user.created_at,
         )
         for user in users
@@ -958,7 +985,9 @@ async def admin_decide_vendor_application(
     admin: Annotated[User, Depends(get_current_admin)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> VendorApplicationRead:
-    application = await session.get(VendorApplication, application_id)
+    application = await session.scalar(
+        select(VendorApplication).where(VendorApplication.id == application_id).with_for_update()
+    )
     if application is None:
         raise APIError(404, "vendor_application_not_found", "Vendor application was not found.")
     if application.status != "pending":
@@ -978,6 +1007,11 @@ async def admin_decide_vendor_application(
     application.reviewed_by = admin.id
     application.reviewed_at = now
     if body.status == "approved":
+        profile = await session.get(VendorProfile, application.user_id)
+        if profile is None:
+            session.add(
+                VendorProfile(user_id=application.user_id, business_name=application.business_name)
+            )
         role = await session.get(UserRole, (application.user_id, "vendor"))
         if role is None:
             session.add(UserRole(user_id=application.user_id, role="vendor"))

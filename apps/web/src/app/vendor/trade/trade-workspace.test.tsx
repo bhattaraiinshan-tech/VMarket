@@ -1,5 +1,12 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { installTestWorkspace } from '@/test-workspace';
 
 import TradeWorkspace from './trade-workspace';
 
@@ -18,9 +25,7 @@ const supplierListing = {
   available_quantity: 100,
   unit_label: 'sack',
   is_active: true,
-  price_tiers: [
-    { id: 'tier-1', minimum_quantity: 10, unit_price: '80.00' },
-  ],
+  price_tiers: [{ id: 'tier-1', minimum_quantity: 10, unit_price: '80.00' }],
   created_at: '2026-11-05T00:00:00Z',
 };
 
@@ -44,50 +49,68 @@ afterEach(() => {
 });
 
 describe('vendor trade workspace', () => {
+  beforeEach(() => installTestWorkspace('vendor'));
   it('finds suppliers and sends an RFQ for a wholesale listing', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
-      .mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = String(input);
-        if (url.endsWith('/vendor/shop')) return Response.json(shop);
-        if (url.includes('/vendor/products')) {
-          return Response.json({ items: [], total: 0, page: 1, page_size: 100 });
-        }
-        if (url.endsWith('/trade/rfqs') && init?.method === 'POST') {
-          return Response.json({ id: 'rfq-1' }, { status: 201 });
-        }
-        if (url.endsWith('/vendor/trade/listings')) return Response.json([]);
-        if (url.endsWith('/trade/listings')) {
-          return Response.json([supplierListing]);
-        }
-        if (
-          url.endsWith('/vendor/trade/listings') ||
-          url.endsWith('/trade/rfqs') ||
-          url.endsWith('/trade/orders') ||
-          url.endsWith('/trade/transfers') ||
-          url.endsWith('/trade/suppliers')
-        ) {
-          return Response.json([]);
-        }
-        return Response.json({ error: { message: 'Unexpected request.' } }, { status: 404 });
-      });
+      .mockImplementation(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = String(input);
+          if (url.endsWith('/vendor/shop')) return Response.json(shop);
+          if (url.includes('/vendor/products')) {
+            return Response.json({
+              items: [],
+              total: 0,
+              page: 1,
+              page_size: 100,
+            });
+          }
+          if (url.endsWith('/trade/rfqs') && init?.method === 'POST') {
+            return Response.json({ id: 'rfq-1' }, { status: 201 });
+          }
+          if (url.endsWith('/vendor/trade/listings')) return Response.json([]);
+          if (url.endsWith('/trade/listings')) {
+            return Response.json([supplierListing]);
+          }
+          if (
+            url.endsWith('/vendor/trade/listings') ||
+            url.endsWith('/trade/rfqs') ||
+            url.endsWith('/trade/orders') ||
+            url.endsWith('/trade/transfers') ||
+            url.endsWith('/trade/suppliers')
+          ) {
+            return Response.json([]);
+          }
+          return Response.json(
+            { error: { message: 'Unexpected request.' } },
+            { status: 404 },
+          );
+        },
+      );
 
     render(<TradeWorkspace />);
 
     expect(await screen.findByText('Basmati rice')).toBeInTheDocument();
-    const listing = screen.getByRole('heading', { name: 'Basmati rice' }).closest('li');
+    const listing = screen
+      .getByRole('heading', { name: 'Basmati rice' })
+      .closest('li');
     expect(listing).not.toBeNull();
     if (!listing) throw new Error('Supplier listing was not rendered.');
     fireEvent.change(within(listing).getByPlaceholderText('Delivery terms'), {
       target: { value: 'Deliver to our warehouse.' },
     });
-    fireEvent.change(within(listing).getByPlaceholderText('Message to supplier'), {
-      target: { value: 'Please quote 20 sacks.' },
-    });
+    fireEvent.change(
+      within(listing).getByPlaceholderText('Message to supplier'),
+      {
+        target: { value: 'Please quote 20 sacks.' },
+      },
+    );
     fireEvent.change(within(listing).getByLabelText('Quantity'), {
       target: { value: '20' },
     });
-    fireEvent.click(within(listing).getByRole('button', { name: 'Request quote' }));
+    fireEvent.click(
+      within(listing).getByRole('button', { name: 'Request quote' }),
+    );
 
     expect(await screen.findByRole('status')).toHaveTextContent(
       'Request for quotation sent to the supplier.',

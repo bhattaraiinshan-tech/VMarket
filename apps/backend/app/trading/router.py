@@ -18,8 +18,7 @@ from app.catalog.models import Product, Shop
 from app.core.config import get_settings
 from app.core.errors import APIError
 from app.db.session import get_session
-from app.identity.dependencies import get_current_user
-from app.identity.models import User
+from app.identity.dependencies import get_active_shop
 from app.storage.client import get_minio_client
 from app.trading.models import (
     TradeBusinessReview,
@@ -66,15 +65,16 @@ TRADE_DOCUMENT_TYPES = {
 }
 
 
-async def _vendor_shop(session: AsyncSession, user: User) -> Shop:
-    if not any(role.role == "vendor" for role in user.roles):
-        raise APIError(403, "vendor_required", "Vendor access is required.")
-    shop = await session.scalar(
-        select(Shop).where(Shop.owner_user_id == user.id, Shop.is_active.is_(True))
-    )
-    if shop is None:
-        raise APIError(404, "shop_not_found", "An active vendor shop is required.")
-    return shop
+async def _different_owners(session: AsyncSession, buyer: Shop, seller_id: UUID) -> None:
+    seller = await session.get(Shop, seller_id)
+    if seller is None:
+        raise APIError(404, "shop_not_found", "The supplier shop was not found.")
+    if seller.owner_user_id == buyer.owner_user_id:
+        raise APIError(
+            422,
+            "self_trade_not_allowed",
+            "Purchases and reviews between your own shops are not allowed.",
+        )
 
 
 async def _listing_read(session: AsyncSession, listing: WholesaleListing) -> WholesaleListingRead:
@@ -294,10 +294,9 @@ async def search_wholesale_listings(
 )
 async def create_wholesale_listing(
     payload: WholesaleListingCreate,
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_active_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> WholesaleListingRead:
-    shop = await _vendor_shop(session, user)
     product = await session.scalar(
         select(Product)
         .where(Product.id == payload.product_id, Product.shop_id == shop.id)
@@ -383,10 +382,9 @@ async def create_wholesale_listing(
 async def update_wholesale_listing(
     listing_id: UUID,
     payload: WholesaleListingCreate,
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_active_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> WholesaleListingRead:
-    shop = await _vendor_shop(session, user)
     listing = await session.scalar(
         select(WholesaleListing).where(
             WholesaleListing.id == listing_id, WholesaleListing.shop_id == shop.id
@@ -458,10 +456,9 @@ async def update_wholesale_listing(
 @router.delete("/vendor/trade/listings/{listing_id}", status_code=204)
 async def deactivate_wholesale_listing(
     listing_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_active_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> None:
-    shop = await _vendor_shop(session, user)
     listing = await session.scalar(
         select(WholesaleListing).where(
             WholesaleListing.id == listing_id, WholesaleListing.shop_id == shop.id
@@ -475,10 +472,9 @@ async def deactivate_wholesale_listing(
 
 @router.get("/vendor/trade/listings", response_model=list[WholesaleListingRead])
 async def list_my_wholesale_listings(
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_active_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[WholesaleListingRead]:
-    shop = await _vendor_shop(session, user)
     listings = list(
         await session.scalars(
             select(WholesaleListing)
@@ -492,10 +488,9 @@ async def list_my_wholesale_listings(
 @router.post("/trade/rfqs", response_model=TradeRFQRead, status_code=201)
 async def create_trade_rfq(
     payload: TradeRFQCreate,
-    user: Annotated[User, Depends(get_current_user)],
+    buyer: Annotated[Shop, Depends(get_active_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TradeRFQRead:
-    buyer = await _vendor_shop(session, user)
     listing = await session.scalar(
         select(WholesaleListing).where(WholesaleListing.id == payload.listing_id).with_for_update()
     )
@@ -505,8 +500,7 @@ async def create_trade_rfq(
     seller = await session.get(Shop, listing.shop_id)
     if product is None or product.status != "approved" or seller is None or not seller.is_active:
         raise APIError(404, "wholesale_listing_not_found", "The wholesale listing is unavailable.")
-    if listing.shop_id == buyer.id:
-        raise APIError(422, "self_trade_not_allowed", "A shop cannot request a quote from itself.")
+    await _different_owners(session, buyer, seller.id)
     if payload.quantity < listing.minimum_order_quantity:
         raise APIError(
             422, "quantity_below_minimum", "The requested quantity is below the listing minimum."
@@ -544,10 +538,9 @@ async def create_trade_rfq(
 
 @router.get("/trade/rfqs", response_model=list[TradeRFQRead])
 async def list_trade_rfqs(
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_active_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[TradeRFQRead]:
-    shop = await _vendor_shop(session, user)
     rfqs = list(
         await session.scalars(
             select(TradeRFQ)
@@ -562,10 +555,9 @@ async def list_trade_rfqs(
 async def submit_trade_quote(
     rfq_id: UUID,
     payload: TradeQuoteCreate,
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_active_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TradeRFQRead:
-    shop = await _vendor_shop(session, user)
     rfq = await session.scalar(select(TradeRFQ).where(TradeRFQ.id == rfq_id).with_for_update())
     if rfq is None or rfq.seller_shop_id != shop.id:
         raise APIError(404, "trade_rfq_not_found", "The request for quotation was not found.")
@@ -618,10 +610,9 @@ async def submit_trade_quote(
 )
 async def accept_trade_quote(
     quote_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
+    buyer: Annotated[Shop, Depends(get_active_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TradePurchaseOrderRead:
-    buyer = await _vendor_shop(session, user)
     quote_reference = await session.scalar(select(TradeQuote).where(TradeQuote.id == quote_id))
     if quote_reference is None:
         raise APIError(404, "trade_quote_not_found", "The quote was not found.")
@@ -635,6 +626,7 @@ async def accept_trade_quote(
     )
     if rfq is None or rfq.buyer_shop_id != buyer.id:
         raise APIError(404, "trade_quote_not_found", "The quote was not found.")
+    await _different_owners(session, buyer, rfq.seller_shop_id)
     if quote is None:
         raise APIError(404, "trade_quote_not_found", "The quote was not found.")
     if rfq.status not in {"open", "quoted"} or quote.status != "pending":
@@ -680,10 +672,9 @@ async def accept_trade_quote(
 @router.post("/trade/quotes/{quote_id}/reject", response_model=TradeRFQRead)
 async def reject_trade_quote(
     quote_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
+    buyer: Annotated[Shop, Depends(get_active_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TradeRFQRead:
-    buyer = await _vendor_shop(session, user)
     quote_reference = await session.scalar(select(TradeQuote).where(TradeQuote.id == quote_id))
     if quote_reference is None:
         raise APIError(404, "trade_quote_not_found", "The quote was not found.")
@@ -727,10 +718,9 @@ async def reject_trade_quote(
 
 @router.get("/trade/orders", response_model=list[TradePurchaseOrderRead])
 async def list_trade_purchase_orders(
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_active_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[TradePurchaseOrderRead]:
-    shop = await _vendor_shop(session, user)
     orders = list(
         await session.scalars(
             select(TradePurchaseOrder)
@@ -750,10 +740,9 @@ async def list_trade_purchase_orders(
 async def update_trade_order_status(
     order_id: UUID,
     payload: TradeStatusUpdate,
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_active_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TradePurchaseOrderRead:
-    shop = await _vendor_shop(session, user)
     order = await session.scalar(
         select(TradePurchaseOrder).where(TradePurchaseOrder.id == order_id).with_for_update()
     )
@@ -865,10 +854,9 @@ async def update_trade_order_status(
 @router.post("/trade/rfqs/{rfq_id}/cancel", response_model=TradeRFQRead)
 async def cancel_trade_rfq(
     rfq_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_active_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TradeRFQRead:
-    shop = await _vendor_shop(session, user)
     rfq = await session.scalar(select(TradeRFQ).where(TradeRFQ.id == rfq_id).with_for_update())
     if rfq is None or rfq.buyer_shop_id != shop.id:
         raise APIError(404, "trade_rfq_not_found", "The request for quotation was not found.")
@@ -891,10 +879,9 @@ async def cancel_trade_rfq(
 async def decline_trade_rfq(
     rfq_id: UUID,
     payload: TradeNegotiationNote,
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_active_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TradeRFQRead:
-    shop = await _vendor_shop(session, user)
     rfq = await session.scalar(select(TradeRFQ).where(TradeRFQ.id == rfq_id).with_for_update())
     if rfq is None or rfq.seller_shop_id != shop.id:
         raise APIError(404, "trade_rfq_not_found", "The request for quotation was not found.")
@@ -1020,10 +1007,9 @@ async def search_trade_suppliers(
 
 @router.get("/trade/history", response_model=list[TradePurchaseOrderRead])
 async def list_my_trade_history(
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_active_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[TradePurchaseOrderRead]:
-    shop = await _vendor_shop(session, user)
     orders = list(
         await session.scalars(
             select(TradePurchaseOrder)
@@ -1047,15 +1033,15 @@ async def list_my_trade_history(
 async def review_trade_supplier(
     order_id: UUID,
     payload: TradeBusinessReviewCreate,
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_active_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TradeBusinessReviewRead:
-    shop = await _vendor_shop(session, user)
     order = await session.scalar(
         select(TradePurchaseOrder).where(TradePurchaseOrder.id == order_id)
     )
     if order is None or order.buyer_shop_id != shop.id:
         raise APIError(404, "trade_order_not_found", "The purchase order was not found.")
+    await _different_owners(session, shop, order.seller_shop_id)
     if order.status != "received":
         raise APIError(
             409, "trade_order_not_received", "A supplier review requires confirmed receipt."
@@ -1086,10 +1072,9 @@ async def review_trade_supplier(
 )
 async def create_stock_transfer(
     payload: TradeStockTransferCreate,
-    user: Annotated[User, Depends(get_current_user)],
+    source_shop: Annotated[Shop, Depends(get_active_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TradeStockTransferRead:
-    source_shop = await _vendor_shop(session, user)
     if payload.destination_shop_id == source_shop.id:
         raise APIError(422, "self_transfer_not_allowed", "A shop cannot transfer stock to itself.")
     destination = await session.scalar(
@@ -1154,10 +1139,9 @@ async def create_stock_transfer(
 
 @router.get("/trade/transfers", response_model=list[TradeStockTransferRead])
 async def list_stock_transfers(
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_active_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[TradeStockTransferRead]:
-    shop = await _vendor_shop(session, user)
     transfers = list(
         await session.scalars(
             select(TradeStockTransfer)
@@ -1177,10 +1161,9 @@ async def list_stock_transfers(
 async def update_stock_transfer_status(
     transfer_id: UUID,
     payload: TradeStatusUpdate,
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_active_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TradeStockTransferRead:
-    shop = await _vendor_shop(session, user)
     transfer = await session.scalar(
         select(TradeStockTransfer).where(TradeStockTransfer.id == transfer_id).with_for_update()
     )
@@ -1298,12 +1281,11 @@ async def update_stock_transfer_status(
 
 async def _trade_document_parent(
     session: AsyncSession,
-    user: User,
+    shop: Shop,
     *,
     order_id: UUID | None = None,
     transfer_id: UUID | None = None,
 ) -> tuple[UUID, UUID | None, UUID | None]:
-    shop = await _vendor_shop(session, user)
     if order_id is not None:
         order = await session.scalar(
             select(TradePurchaseOrder).where(
@@ -1337,14 +1319,14 @@ async def _trade_document_parent(
 
 async def _upload_trade_document(
     *,
-    user: User,
+    shop: Shop,
     session: AsyncSession,
     file: UploadFile,
     order_id: UUID | None = None,
     transfer_id: UUID | None = None,
 ) -> TradeDocumentRead:
     uploader_shop_id, parent_order_id, parent_transfer_id = await _trade_document_parent(
-        session, user, order_id=order_id, transfer_id=transfer_id
+        session, shop, order_id=order_id, transfer_id=transfer_id
     )
     contents = await file.read(MAX_TRADE_DOCUMENT_SIZE + 1)
     if not contents or len(contents) > MAX_TRADE_DOCUMENT_SIZE:
@@ -1421,11 +1403,11 @@ async def _upload_trade_document(
 )
 async def upload_order_document(
     order_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_active_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
     file: Annotated[UploadFile, File()],
 ) -> TradeDocumentRead:
-    return await _upload_trade_document(user=user, session=session, file=file, order_id=order_id)
+    return await _upload_trade_document(shop=shop, session=session, file=file, order_id=order_id)
 
 
 @router.post(
@@ -1435,22 +1417,21 @@ async def upload_order_document(
 )
 async def upload_transfer_document(
     transfer_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_active_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
     file: Annotated[UploadFile, File()],
 ) -> TradeDocumentRead:
     return await _upload_trade_document(
-        user=user, session=session, file=file, transfer_id=transfer_id
+        shop=shop, session=session, file=file, transfer_id=transfer_id
     )
 
 
 @router.get("/trade/documents/{document_id}/url")
 async def get_trade_document_url(
     document_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
+    shop: Annotated[Shop, Depends(get_active_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> dict[str, str | int]:
-    shop = await _vendor_shop(session, user)
     document = await session.scalar(select(TradeDocument).where(TradeDocument.id == document_id))
     if document is None:
         raise APIError(404, "trade_document_not_found", "The trade document was not found.")

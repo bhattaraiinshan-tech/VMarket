@@ -85,6 +85,12 @@ class ProfileRead(BaseModel):
     phone: str | None
 
 
+class VendorProfileRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    business_name: str
+
+
 class UserRead(BaseModel):
     id: UUID
     email: EmailStr
@@ -92,6 +98,7 @@ class UserRead(BaseModel):
     account_status: str
     roles: list[str]
     profile: ProfileRead | None
+    vendor_profile: VendorProfileRead | None
     created_at: datetime
 
 

@@ -138,6 +138,8 @@ class ShopUpdate(BaseModel):
 
 class ShopRead(BaseModel):
     id: UUID
+    slot: int
+    is_active: bool
     name: str
     slug: str
     description: str | None

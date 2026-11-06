@@ -9,12 +9,14 @@ import {
   ConversationMessage,
   requestApi,
 } from '@/lib/api';
+import { useWorkspace } from '@/lib/workspace-context';
 
 export default function ConversationPage({
   conversationId,
 }: {
   conversationId: string;
 }) {
+  const { workspace, shopId, revision } = useWorkspace();
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [content, setContent] = useState('');
@@ -44,13 +46,14 @@ export default function ConversationPage({
         setConversation(conversationResult);
         setMessages(messageResults);
       })
-      .catch((cause: unknown) =>
-        setError(
-          cause instanceof Error
-            ? cause.message
-            : 'The conversation could not be loaded.',
-        ),
-      );
+      .catch((cause: unknown) => {
+        if (active)
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : 'The conversation could not be loaded.',
+          );
+      });
 
     function connect() {
       if (!active) return;
@@ -58,9 +61,16 @@ export default function ConversationPage({
         `${API_BASE_URL}/communications/ws/${conversationId}`,
       );
       url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+      if (workspace !== 'customer' && workspace !== 'vendor') return;
+      url.searchParams.set('workspace', workspace);
+      if (workspace === 'vendor') {
+        if (!shopId) return;
+        url.searchParams.set('shop_id', shopId);
+      }
       const socket = new WebSocket(url);
       socketRef.current = socket;
       socket.onopen = () => {
+        if (!active) return;
         setConnected(true);
         void loadMessages().catch((cause: unknown) =>
           setError(
@@ -71,6 +81,7 @@ export default function ConversationPage({
         );
       };
       socket.onmessage = (event) => {
+        if (!active) return;
         try {
           const message = JSON.parse(event.data) as ConversationMessage;
           setMessages((current) =>
@@ -95,7 +106,7 @@ export default function ConversationPage({
         }
       };
       socket.onclose = (event) => {
-        setConnected(false);
+        if (active) setConnected(false);
         if (active && event.code !== 4401 && event.code !== 4403) {
           reconnectTimer = window.setTimeout(connect, 1500);
         }
@@ -109,7 +120,14 @@ export default function ConversationPage({
       if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
       socketRef.current?.close();
     };
-  }, [conversationId, conversation?.current_user_id, loadMessages]);
+  }, [
+    conversationId,
+    conversation?.current_user_id,
+    loadMessages,
+    workspace,
+    shopId,
+    revision,
+  ]);
 
   async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -142,8 +160,7 @@ export default function ConversationPage({
     }
   }
 
-  const isCustomer =
-    conversation?.current_user_id === conversation?.customer_id;
+  const isCustomer = workspace === 'customer';
 
   return (
     <main className="mx-auto flex min-h-screen max-w-4xl flex-col px-5 py-8 sm:px-8">

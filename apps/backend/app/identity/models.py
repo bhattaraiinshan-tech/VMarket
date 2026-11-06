@@ -47,6 +47,10 @@ class User(Base):
     profile: Mapped["CustomerProfile | None"] = relationship(
         back_populates="user", cascade="all, delete-orphan", uselist=False
     )
+    vendor_profile: Mapped["VendorProfile | None"] = relationship(
+        back_populates="user", cascade="all, delete-orphan", uselist=False
+    )
+    owner_binding: Mapped["PlatformOwner | None"] = relationship(uselist=False)
     addresses: Mapped[list["DeliveryAddress"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
@@ -118,6 +122,29 @@ class CustomerProfile(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="profile")
+
+
+class VendorProfile(Base):
+    __tablename__ = "vendor_profiles"
+
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    business_name: Mapped[str] = mapped_column(String(160))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped[User] = relationship(back_populates="vendor_profile")
+
+
+class PlatformOwner(Base):
+    __tablename__ = "platform_owner"
+    __table_args__ = (CheckConstraint("id = 1", name="ck_platform_owner_singleton"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), unique=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class DeliveryAddress(Base):

@@ -4,8 +4,10 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 import { Notification, requestApi } from '@/lib/api';
+import { useWorkspace } from '@/lib/workspace-context';
 
 export default function NotificationsPage() {
+  const { workspace, shopId } = useWorkspace();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -103,9 +105,31 @@ export default function NotificationsPage() {
                   {notification.conversation_id && (
                     <Link
                       className="mt-2 inline-block text-sm font-semibold text-emerald-800 underline"
-                      href={`/messages/${notification.conversation_id}`}
+                      href={`/messages/${notification.conversation_id}?${new URLSearchParams(
+                        {
+                          workspace: notification.workspace ?? workspace ?? '',
+                          ...((notification.shop_id ?? shopId)
+                            ? { shop_id: (notification.shop_id ?? shopId)! }
+                            : {}),
+                        },
+                      )}`}
                     >
                       Open conversation
+                    </Link>
+                  )}
+                  {!notification.conversation_id && notification.order_id && (
+                    <Link
+                      className="mt-2 inline-block text-sm font-semibold text-emerald-800 underline"
+                      href={`${workspace === 'vendor' ? '/vendor/orders' : workspace === 'admin' ? '/admin/communications' : `/orders/${notification.order_id}`}?${new URLSearchParams(
+                        {
+                          workspace: notification.workspace ?? workspace ?? '',
+                          ...((notification.shop_id ?? shopId)
+                            ? { shop_id: (notification.shop_id ?? shopId)! }
+                            : {}),
+                        },
+                      )}`}
+                    >
+                      Open order
                     </Link>
                   )}
                 </div>

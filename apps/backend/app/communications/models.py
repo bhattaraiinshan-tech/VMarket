@@ -149,13 +149,27 @@ class SupportTicket(Base):
             "length(subject) > 0 AND length(body) > 0",
             name="ck_support_tickets_content",
         ),
+        CheckConstraint(
+            "workspace IN ('customer', 'vendor')",
+            name="ck_support_tickets_workspace",
+        ),
+        CheckConstraint(
+            "(workspace = 'customer' AND shop_id IS NULL) OR "
+            "(workspace = 'vendor' AND shop_id IS NOT NULL)",
+            name="ck_support_tickets_workspace_shop",
+        ),
         Index("ix_support_tickets_status_updated", "status", "updated_at"),
         Index("ix_support_tickets_user_created", "created_by_id", "created_at"),
+        Index("ix_support_tickets_workspace_shop_updated", "workspace", "shop_id", "updated_at"),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     created_by_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    workspace: Mapped[str] = mapped_column(String(16))
+    shop_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("shops.id", ondelete="RESTRICT"), index=True
     )
     order_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL"), index=True

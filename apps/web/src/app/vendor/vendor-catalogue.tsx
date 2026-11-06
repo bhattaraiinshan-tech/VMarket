@@ -13,6 +13,7 @@ import {
   Shop,
   requestApi,
 } from '@/lib/api';
+import { useWorkspaceShops } from '@/lib/workspace-context';
 
 type ShopDraft = {
   name: string;
@@ -297,6 +298,7 @@ function VariantManager({
 }
 
 export default function VendorCatalogue() {
+  const { refresh: refreshShops } = useWorkspaceShops();
   const [shop, setShop] = useState<Shop | null>(null);
   const [shopDraft, setShopDraft] = useState<ShopDraft>(emptyShop);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -386,6 +388,7 @@ export default function VendorCatalogue() {
 
   async function submitShop(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!shop) return;
     setError('');
     setMessage('');
     setBusy(true);
@@ -398,7 +401,7 @@ export default function VendorCatalogue() {
     };
     try {
       const updated = await requestApi<Shop>('/vendor/shop', {
-        method: shop ? 'PATCH' : 'POST',
+        method: 'PATCH',
         body: JSON.stringify(body),
       });
       setShop(updated);
@@ -407,7 +410,8 @@ export default function VendorCatalogue() {
         latitude: updated.latitude ?? '',
         longitude: updated.longitude ?? '',
       });
-      setMessage(shop ? 'Shop profile updated.' : 'Shop profile created.');
+      await refreshShops();
+      setMessage('Shop profile updated.');
     } catch (cause: unknown) {
       setError(
         cause instanceof Error
@@ -643,7 +647,7 @@ export default function VendorCatalogue() {
             disabled={busy}
             type="submit"
           >
-            {shop ? 'Save shop profile' : 'Create shop'}
+            Save selected shop profile
           </button>
         </form>
         {shop && (

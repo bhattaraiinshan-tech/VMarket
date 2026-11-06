@@ -8,6 +8,7 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import IdentityPortal from './identity-portal';
+import WorkspaceSwitcher from './workspace-switcher';
 
 afterEach(() => {
   cleanup();
@@ -51,6 +52,7 @@ describe('identity account controls', () => {
             email_verified: true,
             account_status: 'active',
             roles: ['customer'],
+            vendor_profile: null,
             profile: { full_name: 'Test Customer', phone: null },
           };
         } else if (
@@ -123,6 +125,7 @@ describe('identity account controls', () => {
             email_verified: true,
             account_status: 'active',
             roles: ['admin'],
+            vendor_profile: null,
             profile: { full_name: 'Platform Admin', phone: null },
           };
         } else if (path === '/me/addresses') {
@@ -175,8 +178,17 @@ describe('identity account controls', () => {
         });
       });
 
-    render(<IdentityPortal />);
+    render(
+      <>
+        <WorkspaceSwitcher />
+        <IdentityPortal />
+      </>,
+    );
 
+    await screen.findByLabelText('Workspace');
+    fireEvent.change(screen.getByLabelText('Workspace'), {
+      target: { value: 'admin' },
+    });
     await screen.findByRole('heading', { name: 'Account access controls' });
     fireEvent.change(screen.getByLabelText('Reason for suspension'), {
       target: { value: 'Confirmed policy violation.' },

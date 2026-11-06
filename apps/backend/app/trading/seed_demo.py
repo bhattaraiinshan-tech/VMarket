@@ -9,6 +9,7 @@ from app.catalog.models import Product, Shop
 from app.catalog.seed_demo import _ensure_local_development, seed_demo_data
 from app.core.config import get_settings
 from app.db.session import get_engine, get_session_factory
+from app.identity.models import VendorProfile
 from app.trading.models import (
     TradeBusinessReview,
     TradeNegotiationEvent,
@@ -59,14 +60,17 @@ async def _demo_products(session: AsyncSession) -> list[Product]:
             "The trade demo requires the 20 approved products created by "
             "`python -m app.catalog.seed_demo`."
         )
-    shops = {
-        shop.id
-        for shop in await session.scalars(
-            select(Shop).where(Shop.id.in_({product.shop_id for product in products}))
+    shops = list(
+        await session.scalars(
+            select(Shop)
+            .join(VendorProfile, VendorProfile.user_id == Shop.owner_user_id)
+            .where(Shop.id.in_({product.shop_id for product in products}))
         )
-    }
-    if len(shops) != 10:
-        raise RuntimeError("The trade demo requires products from all 10 demo vendor shops.")
+    )
+    if len(shops) != 10 or len({shop.owner_user_id for shop in shops}) != 10:
+        raise RuntimeError(
+            "The trade demo requires 10 shops with separate approved vendor profiles."
+        )
     return products
 
 

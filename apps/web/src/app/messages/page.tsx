@@ -4,8 +4,10 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 import { Conversation, requestApi } from '@/lib/api';
+import { useWorkspace } from '@/lib/workspace-context';
 
 export default function MessagesPage() {
+  const { workspace } = useWorkspace();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -49,8 +51,7 @@ export default function MessagesPage() {
       ) : conversations.length ? (
         <ul className="mt-6 space-y-3">
           {conversations.map((conversation) => {
-            const isCustomer =
-              conversation.current_user_id === conversation.customer_id;
+            const isCustomer = workspace === 'customer';
             return (
               <li key={conversation.id}>
                 <Link

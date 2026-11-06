@@ -12,6 +12,7 @@ import {
   Shop,
   requestApi,
 } from '@/lib/api';
+import { useWorkspace } from '@/lib/workspace-context';
 
 type Filters = {
   q: string;
@@ -93,6 +94,7 @@ function ProductCard({
 }
 
 export default function Marketplace() {
+  const { workspace, user } = useWorkspace();
   const [categories, setCategories] = useState<Category[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [products, setProducts] = useState<ProductPage | null>(null);
@@ -162,6 +164,7 @@ export default function Marketplace() {
   }, [filters, page]);
 
   useEffect(() => {
+    if (workspace !== 'customer' || !user) return;
     void requestApi<Product[]>('/me/wishlist')
       .then((items) => setSavedIds(new Set(items.map((item) => item.id))))
       .catch((cause: unknown) => {
@@ -173,7 +176,7 @@ export default function Marketplace() {
           );
         }
       });
-  }, []);
+  }, [workspace, user]);
 
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

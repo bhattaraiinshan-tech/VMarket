@@ -14,7 +14,14 @@ from sqlalchemy.pool import StaticPool
 from app.catalog.models import CatalogCategory, Product, ProductVariant, Shop
 from app.db.base import Base
 from app.db.session import get_session
-from app.identity.models import AuthSession, DeliveryAddress, User, UserRole
+from app.identity.models import (
+    AuthSession,
+    CustomerProfile,
+    DeliveryAddress,
+    User,
+    UserRole,
+    VendorProfile,
+)
 from app.identity.security import hash_token
 from app.main import create_app
 from app.orders.models import (
@@ -54,8 +61,10 @@ async def orders_client() -> AsyncIterator[OrdersClient]:
         await session.flush()
         for name, user in users.items():
             session.add(UserRole(user_id=user.id, role="customer"))
+            session.add(CustomerProfile(user_id=user.id, full_name=name))
             if name.startswith("vendor"):
                 session.add(UserRole(user_id=user.id, role="vendor"))
+                session.add(VendorProfile(user_id=user.id, business_name=name))
             session.add(
                 AuthSession(
                     user_id=user.id,
@@ -67,6 +76,7 @@ async def orders_client() -> AsyncIterator[OrdersClient]:
         session.add(category)
         await session.flush()
         shop1 = Shop(
+            slot=1,
             owner_user_id=users["vendor1"].id,
             name="First Shop",
             slug="first-shop-orders",
@@ -74,6 +84,7 @@ async def orders_client() -> AsyncIterator[OrdersClient]:
             province="Bagmati",
         )
         shop2 = Shop(
+            slot=1,
             owner_user_id=users["vendor2"].id,
             name="Second Shop",
             slug="second-shop-orders",
@@ -146,12 +157,131 @@ async def orders_client() -> AsyncIterator[OrdersClient]:
     app.dependency_overrides[get_session] = override_session
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         client.cookies.set("vmarket_session", tokens["customer"])
+        client.headers["X-VMarket-Workspace"] = "customer"
+        client.headers["X-Test-Shop-vendor1"] = str(shop1.id)
+        client.headers["X-Test-Shop-vendor2"] = str(shop2.id)
         yield client, factory, ids
     await engine.dispose()
 
 
 def _sign_in(client: AsyncClient, user: str) -> None:
     client.cookies.set("vmarket_session", f"orders-{user}-session-token")
+    client.headers.pop("X-VMarket-Shop-Id", None)
+    client.headers["X-VMarket-Workspace"] = "vendor" if user.startswith("vendor") else "customer"
+    if user.startswith("vendor"):
+        client.headers["X-VMarket-Shop-Id"] = client.headers[f"X-Test-Shop-{user}"]
+
+
+@pytest.mark.asyncio
+async def test_vendor_cannot_buy_own_products_in_either_workspace(
+    orders_client: OrdersClient,
+) -> None:
+    client, factory, ids = orders_client
+    _sign_in(client, "vendor1")
+    assert (await client.get("/api/v1/me/cart")).status_code == 403
+    client.headers["X-VMarket-Workspace"] = "customer"
+    client.headers.pop("X-VMarket-Shop-Id")
+    response = await client.post(
+        "/api/v1/me/cart/items", json={"product_id": str(ids["product1"]), "quantity": 1}
+    )
+    assert response.status_code == 403
+    async with factory() as session:
+        assert (
+            await session.scalar(
+                select(func.count()).select_from(CartItem).where(CartItem.user_id == ids["vendor1"])
+            )
+            == 0
+        )
+    client.headers.pop("X-VMarket-Workspace")
+    assert (await client.get("/api/v1/me/cart")).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_checkout_rejects_stale_own_shop_cart_before_stock_mutation(
+    orders_client: OrdersClient,
+) -> None:
+    client, factory, ids = orders_client
+    await _add_cart_item(client, ids["product1"], 1)
+    async with factory() as session:
+        shop = await session.get(Shop, ids["shop1"])
+        assert shop is not None
+        session.add(VendorProfile(user_id=ids["customer"], business_name="New Owner"))
+        await session.flush()
+        shop.owner_user_id = ids["customer"]
+        await session.commit()
+    blocked = await _place_order(client, ids["address"])
+    assert blocked.status_code == 403
+    async with factory() as session:
+        product = await session.get(Product, ids["product1"])
+        assert product is not None and product.stock == 5
+        assert await session.scalar(select(func.count()).select_from(CustomerOrder)) == 0
+        assert await session.scalar(select(func.count()).select_from(PaymentTransaction)) == 0
+
+
+@pytest.mark.asyncio
+async def test_notification_read_and_list_are_isolated_between_owned_shops_and_modes(
+    orders_client: OrdersClient,
+) -> None:
+    client, factory, ids = orders_client
+    async with factory() as session:
+        sibling = Shop(
+            owner_user_id=ids["vendor1"],
+            slot=2,
+            name="Sibling branch",
+            slug="sibling-notifications",
+            city="Kathmandu",
+            province="Bagmati",
+        )
+        session.add(sibling)
+        await session.flush()
+        customer_note = OrderNotification(
+            user_id=ids["vendor1"],
+            workspace="customer",
+            title="Personal",
+            message="Personal.",
+        )
+        first_note = OrderNotification(
+            user_id=ids["vendor1"],
+            workspace="vendor",
+            shop_id=ids["shop1"],
+            title="First branch",
+            message="First.",
+        )
+        second_note = OrderNotification(
+            user_id=ids["vendor1"],
+            workspace="vendor",
+            shop_id=sibling.id,
+            title="Second branch",
+            message="Second.",
+        )
+        account_note = OrderNotification(
+            user_id=ids["vendor1"],
+            workspace="account",
+            title="Account security",
+            message="Neutral.",
+        )
+        session.add_all([customer_note, first_note, second_note, account_note])
+        await session.commit()
+        sibling_id, customer_id = str(sibling.id), str(customer_note.id)
+        first_id, second_id, account_id = (
+            str(first_note.id),
+            str(second_note.id),
+            str(account_note.id),
+        )
+    _sign_in(client, "vendor1")
+    first_inbox = await client.get("/api/v1/me/notifications")
+    assert {row["id"] for row in first_inbox.json()} == {first_id, account_id}
+    assert (await client.patch(f"/api/v1/me/notifications/{second_id}/read")).status_code == 404
+    client.headers["X-VMarket-Shop-Id"] = sibling_id
+    second_inbox = await client.get("/api/v1/me/notifications")
+    assert {row["id"] for row in second_inbox.json()} == {second_id, account_id}
+    assert (await client.patch(f"/api/v1/me/notifications/{customer_id}/read")).status_code == 404
+    client.headers["X-VMarket-Workspace"] = "customer"
+    client.headers.pop("X-VMarket-Shop-Id")
+    personal = await client.get("/api/v1/me/notifications")
+    assert {row["id"] for row in personal.json()} == {customer_id, account_id}
+    client.headers["X-VMarket-Workspace"] = "vendor"
+    assert (await client.get("/api/v1/me/notifications")).status_code == 422
 
 
 async def _add_cart_item(
@@ -391,6 +521,8 @@ async def test_customer_cancellation_restocks_and_order_isolation(
     fulfillment_id = placed.json()["fulfillments"][0]["id"]
 
     _sign_in(client, "vendor2")
+    client.headers["X-VMarket-Workspace"] = "customer"
+    client.headers.pop("X-VMarket-Shop-Id")
     hidden = await client.get(f"/api/v1/me/orders/{placed.json()['id']}")
     assert hidden.status_code == 404
 

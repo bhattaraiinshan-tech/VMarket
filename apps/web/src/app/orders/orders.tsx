@@ -9,10 +9,14 @@ export default function CustomerOrders() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     void requestApi<Order[]>('/me/orders')
-      .then(setOrders)
+      .then((items) => {
+        setOrders(items);
+        setLoaded(true);
+      })
       .catch((cause: unknown) =>
         setError(
           cause instanceof Error
@@ -54,9 +58,12 @@ export default function CustomerOrders() {
         <p className="py-12 text-center text-slate-600" role="status">
           Loading orders…
         </p>
-      ) : orders.length === 0 ? (
+      ) : !loaded ? null : orders.length === 0 ? (
         <section className="mt-8 rounded-xl border border-slate-200 bg-white p-8 text-center">
           <p className="font-semibold text-slate-900">No orders yet</p>
+          <p className="mt-2 text-sm text-slate-600">
+            When you place an order, you can follow its progress here.
+          </p>
           <Link
             className="mt-3 inline-block font-semibold text-emerald-800"
             href="/marketplace"

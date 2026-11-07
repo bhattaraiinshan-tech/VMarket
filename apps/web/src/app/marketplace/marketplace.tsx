@@ -49,19 +49,22 @@ function ProductCard({
   saved: boolean;
 }) {
   return (
-    <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <article className="group flex h-full flex-col overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-sm transition-shadow hover:shadow-lg hover:shadow-emerald-950/5">
       <Link href={`/marketplace/${product.slug}`} className="block">
         {product.images[0] ? (
           <div
             aria-label={product.images[0].alt_text || product.name}
-            className="h-48 bg-cover bg-center bg-slate-100"
+            className="h-48 bg-slate-100 bg-cover bg-center"
             role="img"
             style={{
               backgroundImage: `url("${browserStorageUrl(product.images[0].url)}")`,
             }}
           />
         ) : (
-          <div className="flex h-48 items-center justify-center bg-emerald-50 text-4xl text-emerald-800">
+          <div
+            aria-hidden="true"
+            className="flex h-48 items-center justify-center bg-emerald-50 text-5xl font-semibold text-emerald-800"
+          >
             {product.name.slice(0, 1)}
           </div>
         )}
@@ -77,14 +80,15 @@ function ProductCard({
             NPR {product.price}
           </p>
           <p className="mt-1 text-sm text-slate-600">{product.shop_name}</p>
-          <p className="mt-2 text-xs text-slate-500">
+          <p className="mt-2 text-xs font-medium text-slate-600">
             {product.available ? 'In stock' : 'Currently unavailable'}
           </p>
         </div>
       </Link>
-      <div className="border-t border-slate-100 px-5 py-3">
+      <div className="mt-auto border-t border-slate-100 px-5 py-3">
         <button
-          aria-label={`${saved ? 'Remove' : 'Add'} ${product.name} ${saved ? 'from' : 'to'} wishlist`}
+          aria-label={`${saved ? 'Saved' : 'Add to wishlist'}: ${product.name}`}
+          aria-pressed={saved}
           className="text-sm font-semibold text-emerald-800 hover:text-emerald-950"
           onClick={() => onWishlist(product)}
           type="button"
@@ -102,6 +106,9 @@ export default function Marketplace() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [products, setProducts] = useState<ProductPage | null>(null);
   const [shops, setShops] = useState<Shop[]>([]);
+  const [shopSearchState, setShopSearchState] = useState<
+    'idle' | 'loading' | 'success' | 'error'
+  >('idle');
   const [filters, setFilters] = useState(initialFilters);
   const [draft, setDraft] = useState(initialFilters);
   const [page, setPage] = useState(1);
@@ -151,6 +158,7 @@ export default function Marketplace() {
       })
       .catch((cause: unknown) => {
         if (active) {
+          setProducts(null);
           setError(
             cause instanceof Error
               ? cause.message
@@ -214,6 +222,7 @@ export default function Marketplace() {
   async function findShops(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
+    setShopSearchState('loading');
     const query = new URLSearchParams({ page_size: '12' });
     if (latitude && longitude) {
       query.set('latitude', latitude);
@@ -224,7 +233,9 @@ export default function Marketplace() {
     if (draft.province.trim()) query.set('province', draft.province.trim());
     try {
       setShops(await requestApi<Shop[]>(`/shops?${query.toString()}`));
+      setShopSearchState('success');
     } catch (cause: unknown) {
+      setShopSearchState('error');
       setError(
         cause instanceof Error ? cause.message : 'Shops could not be loaded.',
       );
@@ -233,39 +244,42 @@ export default function Marketplace() {
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-7xl px-5 py-8 sm:px-8">
-      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-6">
+      <header className="flex flex-wrap items-end justify-between gap-6 rounded-3xl bg-emerald-950 px-6 py-8 text-white sm:px-10 sm:py-10">
         <div>
-          <Link className="text-sm font-bold text-emerald-800" href="/">
+          <Link
+            className="text-sm font-bold text-emerald-200 underline-offset-4 hover:underline"
+            href="/"
+          >
             Vendor&apos;s Market
           </Link>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">
+          <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
             Discover Nepal&apos;s marketplace
           </h1>
-          <p className="mt-2 max-w-2xl text-sm text-slate-600">
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-emerald-50">
             Shop approved local listings and find vendors near you.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-white"
+            className="rounded-lg border border-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-900"
             href="/vendor"
           >
             Vendor workspace
           </Link>
           <Link
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-white"
+            className="rounded-lg border border-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-900"
             href="/cart"
           >
             Cart
           </Link>
           <Link
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-white"
+            className="rounded-lg border border-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-900"
             href="/orders"
           >
             Orders
           </Link>
           <Link
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-white"
+            className="rounded-lg border border-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-900"
             href="/notifications"
           >
             Notifications
@@ -293,7 +307,7 @@ export default function Marketplace() {
           </h2>
         </div>
         <form
-          className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-6"
+          className="grid gap-4 rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm md:grid-cols-6"
           onSubmit={applyFilters}
         >
           <label className="md:col-span-2">
@@ -478,11 +492,15 @@ export default function Marketplace() {
               </div>
             </div>
           </>
-        ) : (
-          <p className="mt-5 rounded-2xl border border-dashed border-slate-300 p-10 text-center text-sm text-slate-600">
-            No approved products match these filters yet.
-          </p>
-        )}
+        ) : products ? (
+          <div className="mt-5 rounded-2xl border border-dashed border-emerald-200 bg-white p-10 text-center">
+            <p className="font-semibold text-slate-900">No products found</p>
+            <p className="mt-2 text-sm text-slate-600">
+              No approved products match these filters yet. Try a different
+              search or broaden your filters.
+            </p>
+          </div>
+        ) : null}
       </section>
 
       <section
@@ -499,6 +517,10 @@ export default function Marketplace() {
           >
             Find shops near you
           </h2>
+          <p className="mt-2 text-sm text-slate-600">
+            Search by city or province above, or enter coordinates to search
+            within a radius.
+          </p>
         </div>
         <form
           className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-4"
@@ -542,13 +564,27 @@ export default function Marketplace() {
             />
           </label>
           <button
-            className="self-end rounded-lg bg-emerald-800 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-900"
+            className="self-end rounded-lg bg-emerald-800 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={shopSearchState === 'loading'}
             type="submit"
           >
-            Find shops
+            {shopSearchState === 'loading' ? 'Finding shops…' : 'Find shops'}
           </button>
         </form>
-        {shops.length > 0 && (
+        {shopSearchState === 'loading' && (
+          <p className="mt-5 text-sm text-slate-600" role="status">
+            Looking for shops…
+          </p>
+        )}
+        {shopSearchState === 'success' && shops.length === 0 && (
+          <p
+            className="mt-5 rounded-2xl border border-dashed border-emerald-200 bg-white p-6 text-sm text-slate-600"
+            role="status"
+          >
+            No shops found. Try a different location or a larger radius.
+          </p>
+        )}
+        {shopSearchState === 'success' && shops.length > 0 && (
           <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {shops.map((shop) => (
               <Link

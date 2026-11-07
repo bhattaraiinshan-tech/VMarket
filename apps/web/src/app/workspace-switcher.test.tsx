@@ -78,11 +78,15 @@ describe('workspace selection', () => {
         <ScopedChild />
       </WorkspaceProvider>,
     );
+    expect(
+      screen.getByRole('link', { name: 'Skip to content' }),
+    ).toHaveAttribute('href', '#main-content');
     await screen.findByText('Select Vendor workspace to open this page.');
     expect(screen.queryByText('Scoped business data')).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Workspace'), {
       target: { value: 'vendor' },
     });
+
     await screen.findByRole('option', { name: 'First shop' });
     expect(getWorkspaceSnapshot().shopId).toBeNull();
     expect(screen.queryByText('Scoped business data')).not.toBeInTheDocument();
@@ -101,6 +105,19 @@ describe('workspace selection', () => {
       target: { value: 'customer' },
     });
     expect(screen.queryByText('Scoped business data')).not.toBeInTheDocument();
+  });
+
+  it('moves skip-link focus past navigation to the page main content', () => {
+    navigation.path = '/';
+    installFetch();
+    render(
+      <WorkspaceProvider>
+        <nav>Page navigation</nav>
+        <main>Page content</main>
+      </WorkspaceProvider>,
+    );
+    fireEvent.click(screen.getByRole('link', { name: 'Skip to content' }));
+    expect(screen.getByRole('main')).toHaveFocus();
   });
 
   it('counts inactive shops at the three-shop cap', async () => {

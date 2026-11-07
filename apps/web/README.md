@@ -26,6 +26,14 @@ refresh detects an expired or changed account session.
 Run `npm test`, `npm run lint`, `npm run typecheck`, `npm run format:check`, and
 `npm run build` in this directory.
 
+## Shared interface
+
+The global stylesheet defines the interface colors, keyboard focus treatment,
+reduced-motion behavior, and shared workspace page headers. The workspace
+provider supplies a skip-to-content link and keeps protected page content behind
+the existing workspace and shop checks. List screens should distinguish loading
+and failed requests from a successfully loaded empty list.
+
 ## Desktop and mobile development
 
 `npm run dev` listens on all interfaces. Open `http://localhost:3000` on the

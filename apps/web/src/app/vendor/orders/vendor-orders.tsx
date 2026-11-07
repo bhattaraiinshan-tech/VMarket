@@ -16,6 +16,7 @@ export default function VendorOrders() {
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
 
   async function loadOrders() {
     setError('');
@@ -25,6 +26,7 @@ export default function VendorOrders() {
         total: number;
       }>('/vendor/orders');
       setOrders(response.items);
+      setLoaded(true);
     } catch (cause: unknown) {
       setError(
         cause instanceof Error
@@ -149,7 +151,7 @@ export default function VendorOrders() {
         <p className="py-12 text-center text-slate-600" role="status">
           Loading vendor orders…
         </p>
-      ) : orders.length === 0 ? (
+      ) : !loaded ? null : orders.length === 0 ? (
         <p className="mt-7 rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-600">
           No orders are waiting for your shop.
         </p>

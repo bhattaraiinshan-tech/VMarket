@@ -55,16 +55,19 @@ export default function WorkspaceSwitcher() {
   return (
     <header
       aria-label="Workspace selection"
-      className="border-b border-emerald-200 bg-emerald-50 px-5 py-3 text-sm text-slate-950"
+      className="border-b border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-slate-950 sm:px-8"
     >
-      <div className="mx-auto flex max-w-7xl flex-wrap items-end gap-4">
-        <Link className="font-bold text-emerald-900" href="/">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-5 gap-y-3">
+        <Link
+          className="font-bold text-emerald-900 underline-offset-4 hover:underline"
+          href="/"
+        >
           Your account
         </Link>
-        <label>
+        <label className="font-semibold">
           Workspace
           <select
-            className="ml-2 rounded border p-2"
+            className="ml-2 max-w-full rounded-lg border border-emerald-200 bg-white p-2 font-normal"
             value={workspace ?? ''}
             onChange={(event) => {
               setCreating(false);
@@ -85,10 +88,10 @@ export default function WorkspaceSwitcher() {
         </label>
         {workspace === 'vendor' && (
           <>
-            <label className="flex min-w-0 max-w-full items-center gap-2">
+            <label className="flex min-w-0 max-w-full items-center gap-2 font-semibold">
               Shop
               <select
-                className="min-w-0 rounded border p-2"
+                className="min-w-0 rounded-lg border border-emerald-200 bg-white p-2 font-normal"
                 value={shopId ?? ''}
                 disabled={loading}
                 onChange={(event) => {
@@ -109,10 +112,12 @@ export default function WorkspaceSwitcher() {
                 ))}
               </select>
             </label>
-            <span>{shops.length}/3 shops (inactive shops count)</span>
+            <span className="text-slate-700">
+              {shops.length}/3 shops (inactive shops count)
+            </span>
             <button
               type="button"
-              className="rounded border border-emerald-800 px-3 py-2 disabled:opacity-50"
+              className="rounded-lg border border-emerald-800 bg-white px-3 py-2 font-semibold text-emerald-900 hover:bg-emerald-100 disabled:opacity-50"
               disabled={loading || shops.length >= 3 || busy}
               onClick={() => setCreating(!creating)}
             >

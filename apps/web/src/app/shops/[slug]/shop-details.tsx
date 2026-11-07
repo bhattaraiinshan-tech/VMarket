@@ -9,7 +9,7 @@ import FraudReportForm from '@/app/fraud-report-form';
 
 export default function ShopDetails({ slug }: { slug: string }) {
   const [shop, setShop] = useState<Shop | null>(null);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<Product[] | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -23,17 +23,21 @@ export default function ShopDetails({ slug }: { slug: string }) {
         );
         if (active) setProducts(listing.items);
       })
-      .catch((cause: unknown) =>
-        setError(
-          cause instanceof Error ? cause.message : 'Shop could not be loaded.',
-        ),
-      );
+      .catch((cause: unknown) => {
+        if (active) {
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : 'Shop could not be loaded.',
+          );
+        }
+      });
     return () => {
       active = false;
     };
   }, [slug]);
 
-  if (error) {
+  if (error && !shop) {
     return (
       <main className="mx-auto max-w-5xl px-5 py-10">
         <p
@@ -86,28 +90,61 @@ export default function ShopDetails({ slug }: { slug: string }) {
       <FraudReportForm targetType="shop" targetId={shop.id} />
       <section className="mt-9">
         <h2 className="text-2xl font-bold text-slate-950">Approved listings</h2>
-        {products.length ? (
+        {error ? (
+          <p
+            className="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-800"
+            role="alert"
+          >
+            {error}
+          </p>
+        ) : !products ? (
+          <p className="mt-4 text-sm text-slate-600" role="status">
+            Loading listings…
+          </p>
+        ) : products.length ? (
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {products.map((product) => (
               <Link
-                className="rounded-2xl border border-slate-200 bg-white p-5 hover:border-emerald-700"
+                className="overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-sm transition-shadow hover:shadow-lg hover:shadow-emerald-950/5"
                 href={`/marketplace/${product.slug}`}
                 key={product.id}
               >
-                <p className="text-xs font-semibold uppercase text-emerald-800">
-                  {product.category_name}
-                </p>
-                <h3 className="mt-2 font-semibold text-slate-900">
-                  {product.name}
-                </h3>
-                <p className="mt-3 font-bold text-slate-900">
-                  NPR {product.price}
-                </p>
+                {product.images[0] ? (
+                  <div
+                    aria-label={product.images[0].alt_text || product.name}
+                    className="h-40 bg-slate-100 bg-cover bg-center"
+                    role="img"
+                    style={{
+                      backgroundImage: `url("${browserStorageUrl(product.images[0].url)}")`,
+                    }}
+                  />
+                ) : (
+                  <div
+                    aria-hidden="true"
+                    className="flex h-40 items-center justify-center bg-emerald-50 text-4xl font-semibold text-emerald-800"
+                  >
+                    {product.name.slice(0, 1)}
+                  </div>
+                )}
+                <div className="p-5">
+                  <p className="text-xs font-semibold uppercase text-emerald-800">
+                    {product.category_name}
+                  </p>
+                  <h3 className="mt-2 font-semibold text-slate-900">
+                    {product.name}
+                  </h3>
+                  <p className="mt-3 font-bold text-slate-900">
+                    NPR {product.price}
+                  </p>
+                  <p className="mt-2 text-xs text-slate-600">
+                    {product.available ? 'In stock' : 'Currently unavailable'}
+                  </p>
+                </div>
               </Link>
             ))}
           </div>
         ) : (
-          <p className="mt-3 text-sm text-slate-600">
+          <p className="mt-4 rounded-2xl border border-dashed border-emerald-200 bg-white p-8 text-center text-sm text-slate-600">
             This shop has no published products yet.
           </p>
         )}

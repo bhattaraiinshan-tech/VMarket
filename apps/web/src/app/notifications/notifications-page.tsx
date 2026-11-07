@@ -11,11 +11,15 @@ export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
   const [busyId, setBusyId] = useState('');
 
   useEffect(() => {
     void requestApi<Notification[]>('/me/notifications')
-      .then(setNotifications)
+      .then((items) => {
+        setNotifications(items);
+        setLoaded(true);
+      })
       .catch((cause: unknown) =>
         setError(
           cause instanceof Error
@@ -62,10 +66,14 @@ export default function NotificationsPage() {
             Notifications
           </h1>
         </div>
-        <div className="flex gap-4 text-sm font-semibold text-emerald-800">
-          <Link href="/orders">Customer orders</Link>
-          <Link href="/vendor/orders">Vendor fulfillment</Link>
-          <Link href="/messages">Messages</Link>
+        <div className="flex flex-wrap gap-4 text-sm font-semibold text-emerald-800">
+          {workspace === 'customer' && (
+            <Link href="/orders">Customer orders</Link>
+          )}
+          {workspace === 'vendor' && (
+            <Link href="/vendor/orders">Vendor fulfillment</Link>
+          )}
+          {workspace !== 'admin' && <Link href="/messages">Messages</Link>}
         </div>
       </header>
       {error && (
@@ -80,9 +88,9 @@ export default function NotificationsPage() {
         <p className="py-12 text-center text-slate-600" role="status">
           Loading notifications…
         </p>
-      ) : notifications.length === 0 ? (
+      ) : !loaded ? null : notifications.length === 0 ? (
         <p className="mt-7 rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-600">
-          You have no order notifications.
+          You have no notifications yet.
         </p>
       ) : (
         <ul className="mt-7 space-y-3">

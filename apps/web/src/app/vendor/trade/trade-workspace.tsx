@@ -1095,11 +1095,11 @@ export default function TradeWorkspace() {
                         Cancel purchase order
                       </button>
                     )}
-                    <label className="text-sm font-semibold text-slate-700">
+                    <label className="min-w-0 max-w-full text-sm font-semibold text-slate-700">
                       Upload trade document
                       <input
                         accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
-                        className="mt-1 block max-w-xs text-sm"
+                        className="mt-1 block w-full max-w-xs text-sm"
                         onChange={(event) =>
                           void uploadDocument(
                             event,
@@ -1243,11 +1243,11 @@ export default function TradeWorkspace() {
                           Cancel transfer
                         </button>
                       )}
-                    <label className="text-sm font-semibold text-slate-700">
+                    <label className="min-w-0 max-w-full text-sm font-semibold text-slate-700">
                       Upload trade document
                       <input
                         accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
-                        className="mt-1 block max-w-xs text-sm"
+                        className="mt-1 block w-full max-w-xs text-sm"
                         onChange={(event) =>
                           void uploadDocument(
                             event,

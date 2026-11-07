@@ -11,10 +11,14 @@ export default function MessagesPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     void requestApi<Conversation[]>('/me/conversations')
-      .then(setConversations)
+      .then((items) => {
+        setConversations(items);
+        setLoaded(true);
+      })
       .catch((cause: unknown) =>
         setError(
           cause instanceof Error
@@ -48,7 +52,7 @@ export default function MessagesPage() {
         <p className="py-12 text-center text-slate-600" role="status">
           Loading conversations…
         </p>
-      ) : conversations.length ? (
+      ) : !loaded ? null : conversations.length ? (
         <ul className="mt-6 space-y-3">
           {conversations.map((conversation) => {
             const isCustomer = workspace === 'customer';
@@ -89,7 +93,9 @@ export default function MessagesPage() {
         </ul>
       ) : (
         <p className="mt-6 rounded-xl border border-slate-200 bg-white p-8 text-center text-slate-600">
-          No conversations yet. Message a vendor from a product or shop page.
+          {workspace === 'customer'
+            ? 'No conversations yet. Message a vendor from a product page.'
+            : 'No conversations yet. Customer messages will appear here.'}
         </p>
       )}
     </main>

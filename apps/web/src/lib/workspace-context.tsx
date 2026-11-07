@@ -203,23 +203,50 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         refresh: refreshShops,
       }}
     >
+      <a
+        className="skip-link"
+        href="#main-content"
+        onClick={(event) => {
+          const main =
+            document.querySelector<HTMLElement>('#main-content main');
+          if (main) {
+            event.preventDefault();
+            main.tabIndex = -1;
+            main.focus();
+          }
+        }}
+      >
+        Skip to content
+      </a>
       <WorkspaceSwitcher
         key={`${context.user?.id}:${mode}:${context.shopId}`}
       />
-      {blocked ? (
-        <main className="mx-auto max-w-4xl p-8">
-          <p role="status">{blocked}</p>
-          <Link className="text-emerald-800 underline" href="/">
-            Your account
-          </Link>
-        </main>
-      ) : (
-        <div
-          key={`${context.user?.id ?? 'guest'}:${mode}:${context.shopId}:${context.revision}`}
-        >
-          {children}
-        </div>
-      )}
+      <div id="main-content" tabIndex={-1}>
+        {blocked ? (
+          <main className="mx-auto max-w-4xl px-5 py-12 sm:px-8">
+            <div className="rounded-2xl border border-emerald-100 bg-white p-6 shadow-sm sm:p-8">
+              <p className="text-xs font-bold uppercase tracking-widest text-emerald-800">
+                Workspace access
+              </p>
+              <p className="mt-3 text-base text-slate-800" role="status">
+                {blocked}
+              </p>
+              <Link
+                className="mt-4 inline-block font-semibold text-emerald-800 underline underline-offset-4"
+                href="/"
+              >
+                Your account
+              </Link>
+            </div>
+          </main>
+        ) : (
+          <div
+            key={`${context.user?.id ?? 'guest'}:${mode}:${context.shopId}:${context.revision}`}
+          >
+            {children}
+          </div>
+        )}
+      </div>
     </ShopContext.Provider>
   );
 }

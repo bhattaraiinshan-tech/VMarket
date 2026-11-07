@@ -187,13 +187,13 @@ export default function ProductDetails({ slug }: { slug: string }) {
           {error}
         </p>
       )}
-      <section className="mt-5 grid gap-8 lg:grid-cols-2">
+      <section className="mt-5 grid items-start gap-6 lg:grid-cols-2 lg:gap-8">
         <div className="grid gap-3 sm:grid-cols-2">
           {product.images.length ? (
             product.images.map((image) => (
               <div
                 aria-label={image.alt_text || product.name}
-                className="min-h-72 rounded-2xl bg-cover bg-center bg-slate-100"
+                className="min-h-72 rounded-2xl bg-slate-100 bg-cover bg-center"
                 key={image.id}
                 role="img"
                 style={{
@@ -202,12 +202,15 @@ export default function ProductDetails({ slug }: { slug: string }) {
               />
             ))
           ) : (
-            <div className="flex min-h-72 items-center justify-center rounded-2xl bg-emerald-50 text-6xl text-emerald-800">
+            <div
+              aria-hidden="true"
+              className="flex min-h-72 items-center justify-center rounded-2xl bg-emerald-100 text-6xl font-semibold text-emerald-800 sm:col-span-2"
+            >
               {product.name.slice(0, 1)}
             </div>
           )}
         </div>
-        <div className="self-center">
+        <div className="min-w-0 rounded-3xl border border-emerald-100 bg-white p-6 shadow-sm sm:p-8">
           <p className="text-sm font-semibold text-emerald-800">
             {product.category_name}
             {product.brand_name ? ` · ${product.brand_name}` : ''}
@@ -221,7 +224,7 @@ export default function ProductDetails({ slug }: { slug: string }) {
           <p className="mt-2 text-sm text-slate-600">
             {product.available ? 'In stock' : 'Currently unavailable'}
           </p>
-          <p className="mt-6 whitespace-pre-wrap text-slate-700">
+          <p className="mt-6 whitespace-pre-wrap leading-7 text-slate-700">
             {product.description}
           </p>
           <dl className="mt-6 grid gap-2 text-sm sm:grid-cols-2">
@@ -238,7 +241,7 @@ export default function ProductDetails({ slug }: { slug: string }) {
               </div>
             ))}
           </dl>
-          <div className="mt-6 flex flex-wrap items-center gap-3">
+          <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-6">
             {product.variants.length > 0 && (
               <label className="text-sm font-semibold text-slate-800">
                 Option
@@ -293,7 +296,8 @@ export default function ProductDetails({ slug }: { slug: string }) {
               Add to cart
             </button>
             <button
-              className="rounded-lg bg-emerald-800 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-900"
+              aria-pressed={saved}
+              className="rounded-lg border border-emerald-800 px-4 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-50"
               onClick={() => void toggleWishlist()}
               type="button"
             >

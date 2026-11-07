@@ -166,11 +166,11 @@ export default function OrderDetails({ orderId }: { orderId: string }) {
           {error}
         </p>
       )}
-      {!order ? (
+      {!order && !error ? (
         <p className="py-12 text-center text-slate-600" role="status">
           Loading order…
         </p>
-      ) : (
+      ) : order ? (
         <>
           {invoice && (
             <section className="mt-6 border border-slate-300 bg-white p-6 print:border-0">
@@ -477,7 +477,7 @@ export default function OrderDetails({ orderId }: { orderId: string }) {
             </div>
           </section>
         </>
-      )}
+      ) : null}
     </main>
   );
 }

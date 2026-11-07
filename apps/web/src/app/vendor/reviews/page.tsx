@@ -11,17 +11,33 @@ export default function VendorReviewsPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [busyId, setBusyId] = useState('');
+  const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
     void requestApi<ProductReview[]>('/vendor/reviews')
-      .then(setReviews)
-      .catch((cause: unknown) =>
-        setError(
-          cause instanceof Error
-            ? cause.message
-            : 'Reviews could not be loaded.',
-        ),
-      );
+      .then((items) => {
+        if (active) {
+          setReviews(items);
+          setLoaded(true);
+        }
+      })
+      .catch((cause: unknown) => {
+        if (active) {
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : 'Reviews could not be loaded.',
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   async function submitResponse(
@@ -85,7 +101,11 @@ export default function VendorReviewsPage() {
           {message}
         </p>
       )}
-      {reviews.length ? (
+      {loading ? (
+        <p className="mt-6 text-sm text-slate-600" role="status">
+          Loading reviews…
+        </p>
+      ) : !loaded ? null : reviews.length ? (
         <ul className="mt-6 space-y-4">
           {reviews.map((review) => (
             <li

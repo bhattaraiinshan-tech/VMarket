@@ -122,17 +122,20 @@ describe('marketplace', () => {
       ),
     );
     await screen.findByRole('button', {
-      name: 'Add Handwoven Basket to wishlist',
+      name: 'Add to wishlist: Handwoven Basket',
     });
+    expect(
+      screen.getByRole('button', { name: 'Add to wishlist: Handwoven Basket' }),
+    ).toHaveAttribute('aria-pressed', 'false');
 
     fireEvent.click(
-      screen.getByRole('button', { name: 'Add Handwoven Basket to wishlist' }),
+      screen.getByRole('button', { name: 'Add to wishlist: Handwoven Basket' }),
     );
     expect(
       await screen.findByRole('button', {
-        name: 'Remove Handwoven Basket from wishlist',
+        name: 'Saved: Handwoven Basket',
       }),
-    ).toHaveTextContent('Saved');
+    ).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('discovers nearby shops using coordinates', async () => {
@@ -157,5 +160,37 @@ describe('marketplace', () => {
         expect.anything(),
       ),
     );
+  });
+
+  it('does not present a failed product request as an empty result', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(
+      new Error('Network failed'),
+    );
+    render(<Marketplace />);
+
+    await screen.findByRole('alert');
+    await waitFor(() =>
+      expect(screen.queryByText('Loading products…')).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByText('No products found')).not.toBeInTheDocument();
+  });
+
+  it('explains when a shop search has no results', async () => {
+    const fetchMock = installFetchMock();
+    const original = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input).includes('/shops?'))
+        return Promise.resolve(Response.json([]));
+      return original!(input, init);
+    });
+    render(<Marketplace />);
+
+    await screen.findByText('Handwoven Basket');
+    fireEvent.click(screen.getByRole('button', { name: 'Find shops' }));
+    expect(
+      await screen.findByText(
+        'No shops found. Try a different location or a larger radius.',
+      ),
+    ).toHaveAttribute('role', 'status');
   });
 });

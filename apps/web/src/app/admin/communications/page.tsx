@@ -27,6 +27,8 @@ export default function AdminCommunicationsPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [busyId, setBusyId] = useState('');
+  const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async (): Promise<boolean> => {
     setError('');
@@ -39,6 +41,7 @@ export default function AdminCommunicationsPage() {
       setReviews(reviewItems);
       setReports(reportItems);
       setTickets(ticketItems);
+      setLoaded(true);
       return true;
     } catch (cause: unknown) {
       setError(
@@ -62,6 +65,7 @@ export default function AdminCommunicationsPage() {
         setReviews(reviewItems);
         setReports(reportItems);
         setTickets(ticketItems);
+        setLoaded(true);
       })
       .catch((cause: unknown) => {
         if (active) {
@@ -71,6 +75,9 @@ export default function AdminCommunicationsPage() {
               : 'Communication and support queues could not be loaded.',
           );
         }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
       });
     return () => {
       active = false;
@@ -173,7 +180,12 @@ export default function AdminCommunicationsPage() {
         </p>
       )}
 
-      <section className="mt-8">
+      {loading && (
+        <p className="mt-6 text-sm text-slate-600" role="status">
+          Loading communication queues…
+        </p>
+      )}
+      <section className="mt-8" hidden={!loaded}>
         <h2 className="text-2xl font-bold text-slate-950">
           Reviews awaiting moderation
         </h2>
@@ -226,7 +238,7 @@ export default function AdminCommunicationsPage() {
         )}
       </section>
 
-      <section className="mt-10">
+      <section className="mt-10" hidden={!loaded}>
         <h2 className="text-2xl font-bold text-slate-950">Reported reviews</h2>
         {reports.length ? (
           <ul className="mt-4 space-y-3">
@@ -279,7 +291,7 @@ export default function AdminCommunicationsPage() {
         )}
       </section>
 
-      <section className="mt-10">
+      <section className="mt-10" hidden={!loaded}>
         <h2 className="text-2xl font-bold text-slate-950">
           Support tickets and disputes
         </h2>

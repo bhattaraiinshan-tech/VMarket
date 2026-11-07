@@ -196,6 +196,9 @@ export default function CartPage() {
           <h1 className="mt-2 text-3xl font-bold text-slate-950">
             Shopping cart
           </h1>
+          <p className="mt-2 text-sm text-slate-600">
+            Review your items and delivery details before placing your order.
+          </p>
         </div>
         <Link className="text-sm font-semibold text-emerald-800" href="/orders">
           Order history
@@ -255,6 +258,9 @@ export default function CartPage() {
           <h2 className="text-xl font-semibold text-slate-900">
             Your cart is empty
           </h2>
+          <p className="mt-2 text-sm text-slate-600">
+            Find something you like in the marketplace and add it to your cart.
+          </p>
           <Link
             className="mt-4 inline-block font-semibold text-emerald-800"
             href="/marketplace"
@@ -390,8 +396,8 @@ export default function CartPage() {
               </p>
             </div>
             <p className="mt-4 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-600">
-              Cash on delivery. Delivery is NPR 100 per vendor fulfillment.
-              Any promotion discount is validated and applied by the server at
+              Cash on delivery. Delivery is NPR 100 per vendor fulfillment. Any
+              promotion discount is validated and applied by the server at
               checkout.
             </p>
             <button

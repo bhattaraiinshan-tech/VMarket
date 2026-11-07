@@ -28,6 +28,9 @@ export default function AdminCatalog() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [catalogState, setCatalogState] = useState<
+    'loading' | 'ready' | 'error'
+  >('loading');
 
   const loadData = useCallback(async () => {
     try {
@@ -39,6 +42,7 @@ export default function AdminCatalog() {
       setCategories(categoryItems);
       setBrands(brandItems);
       setPending(moderation.items);
+      setCatalogState('ready');
       if (!attributeCategory && categoryItems[0]) {
         setAttributeCategory(categoryItems[0].id);
       }
@@ -63,10 +67,12 @@ export default function AdminCatalog() {
         setCategories(categoryItems);
         setBrands(brandItems);
         setPending(moderation.items);
+        setCatalogState('ready');
         if (categoryItems[0]) setAttributeCategory(categoryItems[0].id);
       })
       .catch((cause: unknown) => {
         if (active) {
+          setCatalogState('error');
           setError(
             cause instanceof Error
               ? cause.message
@@ -405,11 +411,21 @@ export default function AdminCatalog() {
               Pending moderation
             </h2>
           </div>
-          <span className="text-sm text-slate-600">
-            {pending.length} pending
-          </span>
+          {catalogState === 'ready' && (
+            <span className="text-sm text-slate-600">
+              {pending.length} pending
+            </span>
+          )}
         </div>
-        {pending.length ? (
+        {catalogState === 'loading' ? (
+          <p className="mt-4 text-sm text-slate-600" role="status">
+            Loading listings for review…
+          </p>
+        ) : catalogState === 'error' ? (
+          <p className="mt-4 text-sm text-slate-600">
+            Listing review is unavailable.
+          </p>
+        ) : pending.length ? (
           <ul className="mt-4 space-y-4">
             {pending.map((product) => (
               <li

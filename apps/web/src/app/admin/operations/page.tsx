@@ -46,6 +46,7 @@ export default function AdminOperationsPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
     setError('');
@@ -126,6 +127,9 @@ export default function AdminOperationsPage() {
               : 'Operations data could not be loaded.',
           );
         }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
       });
     return () => {
       active = false;
@@ -253,6 +257,11 @@ export default function AdminOperationsPage() {
         </p>
       )}
 
+      {loading && (
+        <p className="mt-6 text-sm text-slate-600" role="status">
+          Loading operations…
+        </p>
+      )}
       {dashboard && (
         <section
           aria-label="Operational metrics"
@@ -663,7 +672,7 @@ export default function AdminOperationsPage() {
               )}
             </li>
           ))}
-          {!reports.length && (
+          {dashboard && !reports.length && (
             <li className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
               No fraud reports are waiting for investigation.
             </li>

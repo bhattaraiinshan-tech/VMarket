@@ -22,16 +22,22 @@ export default function VendorPromotionsPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   async function loadPromotions() {
     setPromotions(await requestApi<Promotion[]>('/vendor/promotions'));
+    setLoaded(true);
   }
 
   useEffect(() => {
     let active = true;
     void requestApi<Promotion[]>('/vendor/promotions')
       .then((items) => {
-        if (active) setPromotions(items);
+        if (active) {
+          setPromotions(items);
+          setLoaded(true);
+        }
       })
       .catch((cause: unknown) => {
         if (active)
@@ -40,6 +46,9 @@ export default function VendorPromotionsPage() {
               ? cause.message
               : 'Your promotions could not be loaded.',
           );
+      })
+      .finally(() => {
+        if (active) setLoading(false);
       });
     return () => {
       active = false;
@@ -96,8 +105,8 @@ export default function VendorPromotionsPage() {
           Shop promotions
         </h1>
         <p className="mt-2 text-sm text-slate-600">
-          Shop-funded discounts apply only to items from the selected shop.
-          One code may be used per order; discounts do not stack.
+          Shop-funded discounts apply only to items from the selected shop. One
+          code may be used per order; discounts do not stack.
         </p>
       </header>
       {(error || message) && (
@@ -109,7 +118,7 @@ export default function VendorPromotionsPage() {
         </p>
       )}
       <form
-        className="mt-6 grid gap-4 rounded-2xl border border-slate-200 bg-white p-6 sm:grid-cols-2"
+        className="mt-6 grid grid-cols-1 gap-4 rounded-2xl border border-slate-200 bg-white p-6 sm:grid-cols-2"
         onSubmit={(event) => void createPromotion(event)}
       >
         <label className="text-sm font-medium">
@@ -197,30 +206,40 @@ export default function VendorPromotionsPage() {
       </form>
       <section className="mt-8">
         <h2 className="text-2xl font-bold">Your shop’s promotion codes</h2>
-        <ul className="mt-3 space-y-3">
-          {promotions.map((promotion) => (
-            <li
-              className="rounded-xl border border-slate-200 bg-white p-4"
-              key={promotion.id}
-            >
-              <p className="font-semibold">
-                {promotion.code} · {promotion.title}
-              </p>
-              <p className="mt-1 text-sm text-slate-600">
-                {promotion.discount_value}
-                {promotion.discount_type === 'percent' ? '%' : ' NPR'} ·{' '}
-                {promotion.redemption_count} redemption
-                {promotion.redemption_count === 1 ? '' : 's'} ·{' '}
-                {promotion.is_active ? 'Active' : 'Inactive'}
-              </p>
-            </li>
-          ))}
-          {!promotions.length && (
-            <li className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
-              No promotions have been created for this shop.
-            </li>
-          )}
-        </ul>
+        {loading ? (
+          <p className="mt-3 text-sm text-slate-600" role="status">
+            Loading promotions…
+          </p>
+        ) : !loaded ? (
+          <p className="mt-3 text-sm text-slate-600">
+            Your promotion history is unavailable.
+          </p>
+        ) : (
+          <ul className="mt-3 space-y-3">
+            {promotions.map((promotion) => (
+              <li
+                className="rounded-xl border border-slate-200 bg-white p-4"
+                key={promotion.id}
+              >
+                <p className="font-semibold">
+                  {promotion.code} · {promotion.title}
+                </p>
+                <p className="mt-1 text-sm text-slate-600">
+                  {promotion.discount_value}
+                  {promotion.discount_type === 'percent' ? '%' : ' NPR'} ·{' '}
+                  {promotion.redemption_count} redemption
+                  {promotion.redemption_count === 1 ? '' : 's'} ·{' '}
+                  {promotion.is_active ? 'Active' : 'Inactive'}
+                </p>
+              </li>
+            ))}
+            {!promotions.length && (
+              <li className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
+                No promotions have been created for this shop.
+              </li>
+            )}
+          </ul>
+        )}
       </section>
     </main>
   );

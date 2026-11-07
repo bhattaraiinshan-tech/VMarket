@@ -19,17 +19,38 @@ export default function SupportPage({
   const [error, setError] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [ticketsLoaded, setTicketsLoaded] = useState(false);
+  const [loadingTickets, setLoadingTickets] = useState(true);
 
   useEffect(() => {
+    let active = true;
     void requestApi<SupportTicket[]>('/me/support-tickets')
-      .then(setTickets)
-      .catch((cause: unknown) =>
-        setError(
-          cause instanceof Error
-            ? cause.message
-            : 'Your support requests could not be loaded.',
-        ),
-      );
+      .then((items) => {
+        if (active) {
+          setTickets((current) => [
+            ...current.filter(
+              (ticket) => !items.some((item) => item.id === ticket.id),
+            ),
+            ...items,
+          ]);
+          setTicketsLoaded(true);
+        }
+      })
+      .catch((cause: unknown) => {
+        if (active) {
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : 'Your support requests could not be loaded.',
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setLoadingTickets(false);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   async function submitTicket(event: FormEvent<HTMLFormElement>) {
@@ -150,33 +171,49 @@ export default function SupportPage({
       </form>
       <section className="mt-10">
         <h2 className="text-2xl font-bold text-slate-950">Your requests</h2>
-        {tickets.length ? (
-          <ul className="mt-4 space-y-3">
-            {tickets.map((ticket) => (
-              <li
-                className="rounded-xl border border-slate-200 bg-white p-5"
-                key={ticket.id}
-              >
-                <div className="flex flex-wrap justify-between gap-2">
-                  <h3 className="font-semibold">{ticket.subject}</h3>
-                  <span className="text-sm font-semibold capitalize text-emerald-900">
-                    {ticket.status.replaceAll('_', ' ')}
-                  </span>
-                </div>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
-                  {ticket.body}
-                </p>
-                {ticket.admin_response && (
-                  <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-800">
-                    Support response: {ticket.admin_response}
+        {loadingTickets ? (
+          <p className="mt-3 text-sm text-slate-600" role="status">
+            Loading your requests…
+          </p>
+        ) : !ticketsLoaded && tickets.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-600">
+            Your request history is unavailable.
+          </p>
+        ) : tickets.length ? (
+          <>
+            {!ticketsLoaded && (
+              <p className="mt-3 text-sm text-slate-600">
+                Earlier request history is unavailable.
+              </p>
+            )}
+            <ul className="mt-4 space-y-3">
+              {tickets.map((ticket) => (
+                <li
+                  className="rounded-xl border border-slate-200 bg-white p-5"
+                  key={ticket.id}
+                >
+                  <div className="flex flex-wrap justify-between gap-2">
+                    <h3 className="font-semibold">{ticket.subject}</h3>
+                    <span className="text-sm font-semibold capitalize text-emerald-900">
+                      {ticket.status.replaceAll('_', ' ')}
+                    </span>
+                  </div>
+                  <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
+                    {ticket.body}
                   </p>
-                )}
-                <p className="mt-3 text-xs capitalize text-slate-500">
-                  {ticket.kind} · {new Date(ticket.created_at).toLocaleString()}
-                </p>
-              </li>
-            ))}
-          </ul>
+                  {ticket.admin_response && (
+                    <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-800">
+                      Support response: {ticket.admin_response}
+                    </p>
+                  )}
+                  <p className="mt-3 text-xs capitalize text-slate-500">
+                    {ticket.kind} ·{' '}
+                    {new Date(ticket.created_at).toLocaleString()}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </>
         ) : (
           <p className="mt-3 text-sm text-slate-600">
             You have no support requests.

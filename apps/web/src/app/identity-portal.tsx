@@ -1091,36 +1091,39 @@ export default function IdentityPortal() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-5 py-8 sm:px-8">
+    <main className="mx-auto flex w-full max-w-6xl flex-col px-5 py-8 sm:px-8">
       <header className="flex items-center justify-between">
-        <Link className="text-lg font-bold tracking-tight" href="/">
-          Vendor&apos;s Market
+        <Link
+          className="text-sm font-semibold text-emerald-800 underline underline-offset-4"
+          href="/marketplace"
+        >
+          Explore the marketplace
         </Link>
         <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
           Identity &amp; access
         </span>
       </header>
 
-      <section className="grid flex-1 items-center gap-12 py-12 lg:grid-cols-[1.1fr_0.9fr]">
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-emerald-700">
+      <section className="grid flex-1 items-center gap-8 py-10 lg:grid-cols-[1.1fr_0.9fr] lg:gap-16 lg:py-16">
+        <div className="rounded-3xl bg-emerald-950 px-6 py-10 text-white sm:px-10 sm:py-14">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-200">
             A trusted market for Nepal
           </p>
           <h1 className="mt-4 max-w-2xl text-4xl font-bold leading-tight tracking-tight sm:text-6xl">
             One account for shopping and business.
           </h1>
-          <p className="mt-5 max-w-xl text-lg leading-8 text-slate-600">
+          <p className="mt-5 max-w-xl text-lg leading-8 text-emerald-50">
             Create a customer profile, manage delivery addresses, or apply to
             join the marketplace as a verified vendor.
           </p>
-          <ul className="mt-8 space-y-3 text-sm text-slate-700">
-            <li>- Private, verified sign-in sessions</li>
-            <li>- Secure account recovery and email verification</li>
-            <li>- Vendor onboarding with private business documents</li>
+          <ul className="mt-8 space-y-3 border-t border-emerald-800 pt-6 text-sm leading-6 text-emerald-50">
+            <li>Private, verified sign-in sessions</li>
+            <li>Secure account recovery and email verification</li>
+            <li>Vendor onboarding with private business documents</li>
           </ul>
         </div>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-lg sm:p-8">
+        <section className="rounded-3xl border border-emerald-100 bg-white p-6 shadow-lg shadow-emerald-950/5 sm:p-8">
           <div className="flex gap-2 border-b border-slate-200 pb-4">
             <button
               aria-pressed={mode === 'login'}
@@ -1293,7 +1296,7 @@ export default function IdentityPortal() {
         </section>
       </section>
 
-      <footer className="border-t border-slate-200 pt-5 text-sm text-slate-500">
+      <footer className="border-t border-slate-200 pt-5 text-sm text-slate-600">
         Account controls are protected by the Vendor&apos;s Market API.
       </footer>
     </main>

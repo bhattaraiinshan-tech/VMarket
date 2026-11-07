@@ -15,6 +15,7 @@ type Invoice = {
   shipping_address: Record<string, string | null>;
   subtotal: string;
   shipping_total: string;
+  discount_total: string;
   total: string;
 };
 
@@ -227,6 +228,9 @@ export default function OrderDetails({ orderId }: { orderId: string }) {
               <div className="mt-5 space-y-1 border-t border-slate-300 pt-3 text-right text-sm">
                 <p>Subtotal: NPR {invoice.subtotal}</p>
                 <p>Delivery: NPR {invoice.shipping_total}</p>
+                {invoice.discount_total !== '0.00' && (
+                  <p>Promotion discount: − NPR {invoice.discount_total}</p>
+                )}
                 <p className="text-lg font-bold">
                   Total due: NPR {invoice.total}
                 </p>
@@ -273,6 +277,12 @@ export default function OrderDetails({ orderId }: { orderId: string }) {
                 <h3 className="font-semibold">Order totals</h3>
                 <p className="mt-2">Subtotal: NPR {order.subtotal}</p>
                 <p>Delivery: NPR {order.shipping_total}</p>
+                {order.discount_total !== '0.00' && (
+                  <p>
+                    Promotion {order.promotion_code}: − NPR{' '}
+                    {order.discount_total}
+                  </p>
+                )}
                 <p className="font-semibold">Total due: NPR {order.total}</p>
               </div>
             </div>

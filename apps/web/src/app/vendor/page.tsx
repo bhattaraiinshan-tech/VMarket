@@ -9,6 +9,7 @@ export default function VendorPage() {
         <Link href="/messages">Customer messages</Link>
         <Link href="/vendor/reviews">Product reviews</Link>
         <Link href="/vendor/trade">Wholesale and vendor trade</Link>
+        <Link href="/vendor/promotions">Shop promotions</Link>
       </nav>
       <VendorCatalogue />
     </>

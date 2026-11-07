@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from datetime import datetime
 from decimal import Decimal
 from typing import Literal
@@ -40,6 +41,7 @@ class CheckoutCreate(BaseModel):
     address_id: UUID
     payment_method: Literal["cash_on_delivery"] = "cash_on_delivery"
     idempotency_key: str = Field(min_length=16, max_length=128)
+    promotion_code: str | None = Field(default=None, min_length=3, max_length=40)
 
     @field_validator("idempotency_key")
     @classmethod
@@ -48,6 +50,12 @@ class CheckoutCreate(BaseModel):
         if not normalized:
             raise ValueError("idempotency_key cannot be blank")
         return normalized
+
+    @field_validator("promotion_code")
+    @classmethod
+    def normalize_promotion_code(cls, value: str | None) -> str | None:
+        normalized = value.strip().upper() if value else None
+        return normalized or None
 
 
 class OrderItemRead(BaseModel):
@@ -95,6 +103,9 @@ class FulfillmentOrderRead(BaseModel):
     status: str
     subtotal: Decimal
     shipping_fee: Decimal
+    discount_total: Decimal
+    commission_rate_bps: int
+    commission_amount: Decimal
     tracking_number: str | None
     created_at: datetime
     updated_at: datetime
@@ -109,9 +120,11 @@ class OrderRead(BaseModel):
     invoice_number: str
     status: str
     payment_method: str
-    shipping_address: dict[str, str | None]
+    shipping_address: Mapping[str, str | None]
     subtotal: Decimal
     shipping_total: Decimal
+    discount_total: Decimal
+    promotion_code: str | None
     total: Decimal
     created_at: datetime
     updated_at: datetime
@@ -167,9 +180,10 @@ class InvoiceRead(BaseModel):
     issued_at: datetime
     payment_method: str
     status: str
-    shipping_address: dict[str, str | None]
+    shipping_address: Mapping[str, str | None]
     subtotal: Decimal
     shipping_total: Decimal
+    discount_total: Decimal
     total: Decimal
     fulfillments: list[FulfillmentOrderRead]
 

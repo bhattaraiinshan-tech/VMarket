@@ -30,11 +30,16 @@ export default function CartPage() {
   const [cart, setCart] = useState<Cart | null>(null);
   const [addresses, setAddresses] = useState<DeliveryAddress[]>([]);
   const [addressId, setAddressId] = useState('');
+  const [promotionCode, setPromotionCode] = useState('');
   const [placedOrder, setPlacedOrder] = useState<Order | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const idempotencyKey = useRef<string | null>(null);
+  const idempotencyKey = useRef<{
+    key: string;
+    addressId: string;
+    promotionCode: string;
+  } | null>(null);
 
   async function loadCheckoutData() {
     setLoading(true);
@@ -139,14 +144,26 @@ export default function CartPage() {
     }
     setBusy(true);
     setError('');
-    idempotencyKey.current ??= crypto.randomUUID();
+    const normalizedCode = promotionCode.trim().toUpperCase();
+    if (
+      !idempotencyKey.current ||
+      idempotencyKey.current.addressId !== addressId ||
+      idempotencyKey.current.promotionCode !== normalizedCode
+    ) {
+      idempotencyKey.current = {
+        key: crypto.randomUUID(),
+        addressId,
+        promotionCode: normalizedCode,
+      };
+    }
     try {
       const order = await requestApi<Order>('/me/checkout', {
         method: 'POST',
         body: JSON.stringify({
           address_id: addressId,
           payment_method: 'cash_on_delivery',
-          idempotency_key: idempotencyKey.current,
+          idempotency_key: idempotencyKey.current.key,
+          promotion_code: normalizedCode || null,
         }),
       });
       setPlacedOrder(order);
@@ -328,6 +345,16 @@ export default function CartPage() {
                 ))}
               </select>
             </label>
+            <label className="mt-4 block text-sm font-medium text-slate-800">
+              Promotion code (optional)
+              <input
+                autoComplete="off"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                maxLength={40}
+                onChange={(event) => setPromotionCode(event.target.value)}
+                value={promotionCode}
+              />
+            </label>
             {addresses.length === 0 && (
               <p className="mt-2 text-sm text-slate-600">
                 <Link
@@ -358,12 +385,14 @@ export default function CartPage() {
                 <span>NPR {shipping}</span>
               </p>
               <p className="flex justify-between border-t border-slate-100 pt-3 font-bold text-slate-950">
-                <span>Total due</span>
+                <span>Estimated total</span>
                 <span>NPR {addNprAmounts(cart.subtotal, shipping)}</span>
               </p>
             </div>
             <p className="mt-4 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-600">
               Cash on delivery. Delivery is NPR 100 per vendor fulfillment.
+              Any promotion discount is validated and applied by the server at
+              checkout.
             </p>
             <button
               className="mt-4 w-full rounded-lg bg-emerald-800 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"

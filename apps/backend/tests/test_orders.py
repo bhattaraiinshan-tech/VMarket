@@ -18,12 +18,14 @@ from app.identity.models import (
     AuthSession,
     CustomerProfile,
     DeliveryAddress,
+    PlatformOwner,
     User,
     UserRole,
     VendorProfile,
 )
 from app.identity.security import hash_token
 from app.main import create_app
+from app.operations.models import PlatformSettings, Promotion
 from app.orders.models import (
     CartItem,
     CustomerOrder,
@@ -48,6 +50,7 @@ async def orders_client() -> AsyncIterator[OrdersClient]:
             yield session
 
     async with factory() as session:
+        session.add(PlatformSettings(id=1, commission_rate_bps=300, return_window_days=7))
         users: dict[str, User] = {}
         for name in tokens:
             user = User(
@@ -359,6 +362,148 @@ async def test_checkout_splits_vendor_orders_reserves_stock_and_is_idempotent(
     assert invoice.status_code == 200
     assert invoice.json()["invoice_number"] == order["invoice_number"]
     assert invoice.json()["total"] == "450.60"
+
+
+@pytest.mark.asyncio
+async def test_vendor_promotion_is_shop_scoped_and_snapshots_discount_and_commission(
+    orders_client: OrdersClient,
+) -> None:
+    client, factory, ids = orders_client
+    _sign_in(client, "vendor1")
+    created = await client.post(
+        "/api/v1/vendor/promotions",
+        json={
+            "code": "spring10",
+            "title": "Spring discount",
+            "discount_type": "percent",
+            "discount_value": "10",
+        },
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["code"] == "SPRING10"
+    assert created.json()["sponsor_type"] == "vendor"
+    assert created.json()["shop_id"] == str(ids["shop1"])
+
+    _sign_in(client, "customer")
+    await _add_cart_item(client, ids["product1"], 1)
+    response = await client.post(
+        "/api/v1/me/checkout",
+        json={
+            "address_id": str(ids["address"]),
+            "payment_method": "cash_on_delivery",
+            "idempotency_key": "vendor-promotion-checkout-01",
+            "promotion_code": "spring10",
+        },
+    )
+    assert response.status_code == 201, response.text
+    order = response.json()
+    assert order["discount_total"] == "10.03"
+    assert order["total"] == "190.22"
+    assert order["promotion_code"] == "SPRING10"
+    fulfillment = order["fulfillments"][0]
+    assert fulfillment["discount_total"] == "10.03"
+    assert fulfillment["commission_rate_bps"] == 300
+    assert fulfillment["commission_amount"] == "2.71"
+    assert fulfillment["transactions"][0]["amount"] == "190.22"
+
+    repeated = await client.post(
+        "/api/v1/me/checkout",
+        json={
+            "address_id": str(ids["address"]),
+            "payment_method": "cash_on_delivery",
+            "idempotency_key": "vendor-promotion-checkout-01",
+            "promotion_code": "SPRING10",
+        },
+    )
+    assert repeated.status_code == 201
+    assert repeated.json()["id"] == order["id"]
+    async with factory() as session:
+        promotion = await session.get(Promotion, UUID(created.json()["id"]))
+        assert promotion is not None and promotion.redemption_count == 1
+        session.add(PlatformOwner(user_id=ids["customer"]))
+        await session.commit()
+    client.headers["X-VMarket-Workspace"] = "admin"
+    admin_orders = await client.get("/api/v1/admin/orders")
+    admin_payments = await client.get("/api/v1/admin/payments")
+    assert admin_orders.status_code == 200, admin_orders.text
+    assert admin_orders.json()[0]["promotion_code"] == "SPRING10"
+    assert admin_payments.status_code == 200, admin_payments.text
+    assert admin_payments.json()[0]["amount"] == "190.22"
+
+
+@pytest.mark.asyncio
+async def test_operations_settings_dashboard_and_fraud_reports_are_owner_protected_and_audited(
+    orders_client: OrdersClient,
+) -> None:
+    client, factory, ids = orders_client
+    assert (await client.get("/api/v1/admin/dashboard")).status_code == 403
+    async with factory() as session:
+        session.add(PlatformOwner(user_id=ids["customer"]))
+        await session.commit()
+
+    client.headers["X-VMarket-Workspace"] = "admin"
+    dashboard = await client.get("/api/v1/admin/dashboard")
+    assert dashboard.status_code == 200, dashboard.text
+    assert dashboard.json()["users_total"] == 3
+    settings = await client.patch(
+        "/api/v1/admin/settings",
+        json={"commission_rate_bps": 450, "return_window_days": 14},
+    )
+    assert settings.status_code == 200, settings.text
+    assert settings.json()["commission_rate_bps"] == 450
+    assert settings.json()["return_window_days"] == 14
+    platform_promotion = await client.post(
+        "/api/v1/admin/promotions",
+        json={
+            "code": "PLATFORM5",
+            "title": "Marketplace offer",
+            "discount_type": "fixed",
+            "discount_value": "5.00",
+        },
+    )
+    assert platform_promotion.status_code == 201, platform_promotion.text
+    assert platform_promotion.json()["sponsor_type"] == "platform"
+    invalid_settings = await client.patch(
+        "/api/v1/admin/settings", json={"commission_rate_bps": 600}
+    )
+    assert invalid_settings.status_code == 422
+
+    client.headers["X-VMarket-Workspace"] = "customer"
+    report = await client.post(
+        "/api/v1/me/fraud-reports",
+        json={
+            "target_type": "product",
+            "target_id": str(ids["product1"]),
+            "reason": "Suspicious listing",
+            "details": "The seller appears to be impersonating a brand.",
+        },
+    )
+    assert report.status_code == 201, report.text
+    duplicate = await client.post(
+        "/api/v1/me/fraud-reports",
+        json={
+            "target_type": "product",
+            "target_id": str(ids["product1"]),
+            "reason": "Suspicious listing",
+        },
+    )
+    assert duplicate.status_code == 409
+
+    client.headers["X-VMarket-Workspace"] = "admin"
+    queued = await client.get("/api/v1/admin/fraud-reports?status=pending")
+    assert queued.status_code == 200
+    assert len(queued.json()) == 1
+    resolved = await client.patch(
+        f"/api/v1/admin/fraud-reports/{report.json()['id']}",
+        json={
+            "status": "resolved",
+            "investigation_notes": "Verified the listing and contacted the reporter.",
+        },
+    )
+    assert resolved.status_code == 200, resolved.text
+    assert resolved.json()["status"] == "resolved"
+    audits = await client.get("/api/v1/admin/audit-logs")
+    assert any(item["action"] == "fraud_report_investigated" for item in audits.json())
 
 
 @pytest.mark.asyncio

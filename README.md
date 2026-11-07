@@ -3,7 +3,7 @@
 Vendor's Market is a commerce platform for customers, retail vendors, and wholesale businesses in Nepal. It is built as a
 modular monolith with a Next.js web app and a versioned FastAPI backend.
 
-## Implemented phases: Foundation through wholesale and vendor trade
+## Implemented phases: Foundation through administration and operations
 
 The repository includes a Next.js customer-facing application shell, a FastAPI service, PostgreSQL/PostGIS and MinIO for
 local development, database migrations, structured API errors and logs, dependency health checks, and automated quality
@@ -24,7 +24,8 @@ audit history. Phase 6 adds shop-scoped wholesale listings with quantity price t
 supplier discovery, RFQs with revisioned quotes and negotiation history, purchase orders with
 trade-specific status events, concurrent stock reservation, shop-to-shop stock transfers with
 receipt confirmation, private MinIO trade documents, supplier performance history, and verified
-business reviews after receipt.
+business reviews after receipt. Phase 7 adds owner-only operational dashboards and order/payment oversight,
+commission and return-policy settings, platform/vendor-funded promotion codes, and auditable fraud investigations.
 
 ## Prerequisites
 
@@ -108,6 +109,35 @@ wholesale, and review responses require Vendor mode and the selected shop. Admin
 implicitly authorize customer/vendor actions. Messages, notifications, support, and live updates are scoped accordingly.
 Buying/reviewing your own shops (including wholesale between your own shops) is prohibited. Explicit stock transfers
 between distinct shops you own remain allowed.
+
+## Phase 7: Administration and operations
+
+The platform owner can manage users, vendor verification, product/review moderation, support disputes, platform
+settings, and operational investigations. Admin access remains owner-only; no staff-role or public administrator
+promotion flow is introduced. The operations dashboard provides order, COD payment/refund, dispute, verification,
+moderation, fraud-report, and accrued-commission summaries, with read-only order and payment oversight. Administrative
+changes are recorded in the existing append-only audit log.
+
+The owner can configure vendor commission from 3% through 5% and the customer return window from 1 through 30 days.
+The commission rate is snapshotted for each fulfillment when an order is placed; commission amounts use decimal
+arithmetic and are reported separately from COD collection. Existing order totals are not recalculated when settings
+change. Category and product moderation remain under catalogue administration.
+
+The owner can create platform-funded discount codes, and vendors can create codes funded by one explicitly selected
+shop. Vendor codes apply only to that shop's cart items. Percentage or fixed NPR discounts are supported; a checkout
+accepts one code, codes cannot be stacked, and discounts are capped at eligible item subtotal. Redemption limits and
+active dates are supported by the API. Discount values and the code used are snapshotted on the order; vendor-funded
+discounts reduce that shop's commission base. Customers and vendors can report suspicious products or shops, and the
+owner can investigate, resolve, or dismiss reports with an audit record.
+
+Run the new migration before deploying backend and web changes:
+
+```powershell
+alembic -c apps\backend\alembic.ini upgrade head
+```
+
+The migration adds platform settings, promotion and fraud-report tables, and order/fulfillment financial snapshots.
+Its downgrade refuses to discard promotions, reports, applied discounts, or changed platform settings.
 
 ### Migration and deployment safety
 

@@ -20,7 +20,7 @@ export async function requestApi<T>(
   const vendor = /^\/(vendor\/|trade(?:\/|$))/.test(pathname);
   const admin = pathname.startsWith('/admin/');
   const shared =
-    /^\/me\/(notifications|support-tickets|conversations)(?:\/|$)/.test(
+    /^\/me\/(notifications|support-tickets|conversations|fraud-reports)(?:\/|$)/.test(
       pathname,
     );
   const customer =
@@ -287,6 +287,9 @@ export type FulfillmentOrder = {
   status: string;
   subtotal: string;
   shipping_fee: string;
+  discount_total: string;
+  commission_rate_bps: number;
+  commission_amount: string;
   tracking_number: string | null;
   created_at: string;
   updated_at: string;
@@ -304,6 +307,8 @@ export type Order = {
   shipping_address: Record<string, string | null>;
   subtotal: string;
   shipping_total: string;
+  discount_total: string;
+  promotion_code: string | null;
   total: string;
   created_at: string;
   updated_at: string;
@@ -376,6 +381,89 @@ export type SupportTicket = {
   status: 'open' | 'in_progress' | 'resolved' | 'closed';
   admin_response: string | null;
   assigned_admin_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PlatformSettings = {
+  commission_rate_bps: number;
+  return_window_days: number;
+  updated_at: string;
+};
+
+export type Promotion = {
+  id: string;
+  code: string;
+  title: string;
+  discount_type: 'percent' | 'fixed';
+  discount_value: string;
+  sponsor_type: 'platform' | 'vendor';
+  shop_id: string | null;
+  is_active: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
+  max_redemptions: number | null;
+  redemption_count: number;
+  created_at: string;
+};
+
+export type FraudReport = {
+  id: string;
+  reporter_id: string;
+  reporter_email?: string | null;
+  target_type: 'product' | 'shop' | 'order' | 'review' | 'vendor';
+  target_id: string;
+  reason: string;
+  details: string | null;
+  status: 'pending' | 'investigating' | 'resolved' | 'dismissed';
+  investigation_notes: string | null;
+  investigated_by_id: string | null;
+  investigated_at: string | null;
+  created_at: string;
+};
+
+export type OperationsDashboard = {
+  users_total: number;
+  active_vendors: number;
+  pending_vendor_applications: number;
+  pending_products: number;
+  orders_total: number;
+  open_orders: number;
+  open_disputes: number;
+  pending_fraud_reports: number;
+  pending_payments: number;
+  collected_npr: string;
+  refunds_due_npr: string;
+  commission_accrued_npr: string;
+};
+
+export type AdminOrder = {
+  id: string;
+  customer_id: string;
+  customer_email: string;
+  order_number: string;
+  status: string;
+  payment_method: 'cash_on_delivery';
+  subtotal: string;
+  shipping_total: string;
+  discount_total: string;
+  total: string;
+  promotion_code: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AdminPayment = {
+  id: string;
+  order_id: string;
+  order_number: string;
+  fulfillment_order_id: string;
+  shop_name: string;
+  customer_email: string;
+  transaction_type: 'charge' | 'refund';
+  method: 'cash_on_delivery';
+  status: 'pending' | 'collected' | 'cancelled' | 'refund_due' | 'refunded';
+  amount: string;
   created_at: string;
   updated_at: string;
 };

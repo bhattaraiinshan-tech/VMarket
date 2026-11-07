@@ -11,6 +11,7 @@ from app.core.config import get_settings
 from app.db.base import Base
 from app.identity import models as identity_models  # noqa: F401
 from app.orders import models as orders_models  # noqa: F401
+from app.operations import models as operations_models  # noqa: F401
 from app.trading import models as trading_models  # noqa: F401
 
 config = context.config

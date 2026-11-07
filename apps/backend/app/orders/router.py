@@ -1,6 +1,6 @@
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated
 from uuid import UUID, uuid4
 
@@ -20,6 +20,7 @@ from app.identity.dependencies import (
     get_workspace_context,
 )
 from app.identity.models import DeliveryAddress, User
+from app.operations.models import PlatformSettings, Promotion
 from app.orders.models import (
     CartItem,
     CustomerOrder,
@@ -48,7 +49,7 @@ from app.orders.schemas import (
 
 router = APIRouter(tags=["orders"])
 SHIPPING_FEE_PER_VENDOR = Decimal("100.00")
-RETURN_WINDOW = timedelta(days=7)
+MONEY = Decimal("0.01")
 
 
 async def _cart_item_read(session: AsyncSession, item: CartItem) -> CartItemRead:
@@ -112,6 +113,7 @@ async def _lock_user_cart(session: AsyncSession, user: User) -> None:
 
 
 async def _order_read(session: AsyncSession, order: CustomerOrder) -> OrderRead:
+    promotion = await session.get(Promotion, order.promotion_id) if order.promotion_id else None
     fulfillment_orders = list(
         await session.scalars(
             select(FulfillmentOrder)
@@ -129,6 +131,8 @@ async def _order_read(session: AsyncSession, order: CustomerOrder) -> OrderRead:
         shipping_address=order.shipping_address,
         subtotal=order.subtotal,
         shipping_total=order.shipping_total,
+        discount_total=order.discount_total,
+        promotion_code=promotion.code if promotion else None,
         total=order.total,
         created_at=order.created_at,
         updated_at=order.updated_at,
@@ -169,6 +173,9 @@ async def _fulfillment_read(
         status=fulfillment.status,
         subtotal=fulfillment.subtotal,
         shipping_fee=fulfillment.shipping_fee,
+        discount_total=fulfillment.discount_total,
+        commission_rate_bps=fulfillment.commission_rate_bps,
+        commission_amount=fulfillment.commission_amount,
         tracking_number=fulfillment.tracking_number,
         created_at=fulfillment.created_at,
         updated_at=fulfillment.updated_at,
@@ -455,9 +462,15 @@ async def checkout(
         )
     )
     if existing_order is not None:
+        existing_promotion = (
+            await session.get(Promotion, existing_order.promotion_id)
+            if existing_order.promotion_id
+            else None
+        )
         if (
             existing_order.address_id != body.address_id
             or existing_order.payment_method != body.payment_method
+            or (existing_promotion.code if existing_promotion else None) != body.promotion_code
         ):
             raise APIError(
                 409, "idempotency_key_reused", "Use a new checkout key for a different order."
@@ -498,6 +511,39 @@ async def checkout(
     )
     if not cart_items:
         raise APIError(409, "cart_empty", "Add at least one product before placing an order.")
+
+    settings = await session.scalar(
+        select(PlatformSettings).where(PlatformSettings.id == 1).with_for_update()
+    )
+    if settings is None:
+        raise APIError(
+            503,
+            "platform_settings_unavailable",
+            "Platform settings are unavailable. Apply the latest database migration.",
+        )
+    promotion: Promotion | None = None
+    if body.promotion_code:
+        promotion = await session.scalar(
+            select(Promotion).where(Promotion.code == body.promotion_code).with_for_update()
+        )
+        now = datetime.now(timezone.utc)
+        if promotion is None or not promotion.is_active:
+            raise APIError(422, "promotion_unavailable", "This promotion code is not available.")
+        starts_at = promotion.starts_at
+        ends_at = promotion.ends_at
+        if starts_at is not None and starts_at.tzinfo is None:
+            starts_at = starts_at.replace(tzinfo=timezone.utc)
+        if ends_at is not None and ends_at.tzinfo is None:
+            ends_at = ends_at.replace(tzinfo=timezone.utc)
+        if (
+            (starts_at is not None and starts_at > now)
+            or (ends_at is not None and ends_at <= now)
+            or (
+                promotion.max_redemptions is not None
+                and promotion.redemption_count >= promotion.max_redemptions
+            )
+        ):
+            raise APIError(422, "promotion_unavailable", "This promotion code is not available.")
 
     validated: list[tuple[CartItem, Product, ProductVariant | None, Shop, Decimal]] = []
     reserved_by_inventory: dict[tuple[str, UUID], int] = defaultdict(int)
@@ -560,12 +606,60 @@ async def checkout(
     for entry in validated:
         grouped[entry[3].id].append(entry)
 
+    subtotal_by_shop = {
+        shop_id: sum(
+            (price * item.quantity for item, _, _, _, price in entries),
+            Decimal("0.00"),
+        )
+        for shop_id, entries in grouped.items()
+    }
+    gross_subtotal = sum(subtotal_by_shop.values(), Decimal("0.00"))
+    eligible_subtotal = gross_subtotal
+    if promotion is not None and promotion.shop_id is not None:
+        eligible_subtotal = subtotal_by_shop.get(promotion.shop_id, Decimal("0.00"))
+        if eligible_subtotal <= 0:
+            raise APIError(
+                422,
+                "promotion_shop_not_in_cart",
+                "This vendor promotion applies only to items from its shop.",
+            )
+    discount_total = Decimal("0.00")
+    if promotion is not None:
+        if promotion.discount_type == "percent":
+            discount_total = (
+                eligible_subtotal * promotion.discount_value / Decimal("100")
+            ).quantize(MONEY, rounding=ROUND_HALF_UP)
+        else:
+            discount_total = min(promotion.discount_value, eligible_subtotal).quantize(
+                MONEY, rounding=ROUND_HALF_UP
+            )
+
+    discounts_by_shop: dict[UUID, Decimal] = {}
+    eligible_shops = (
+        [promotion.shop_id]
+        if promotion is not None and promotion.shop_id is not None
+        else list(grouped)
+    )
+    remaining_discount = discount_total
+    for shop_id in eligible_shops:
+        eligible_amount = subtotal_by_shop[shop_id]
+        if shop_id == eligible_shops[-1]:
+            shop_discount = remaining_discount
+        else:
+            shop_discount = (discount_total * eligible_amount / eligible_subtotal).quantize(
+                MONEY, rounding=ROUND_HALF_UP
+            )
+            shop_discount = min(shop_discount, remaining_discount)
+        discounts_by_shop[shop_id] = shop_discount
+        remaining_discount -= shop_discount
+
     order_number = f"VM-{datetime.now(timezone.utc):%Y%m%d}-{uuid4().hex[:10].upper()}"
     order = CustomerOrder(
         customer_id=user.id,
         order_number=order_number,
         invoice_number=f"INV-{order_number}",
         idempotency_key=body.idempotency_key,
+        promotion_id=promotion.id if promotion else None,
         address_id=address.id,
         shipping_address={
             "label": address.label,
@@ -579,8 +673,9 @@ async def checkout(
         },
         status="pending",
         payment_method=body.payment_method,
-        subtotal=Decimal("0.00"),
+        subtotal=gross_subtotal,
         shipping_total=Decimal("0.00"),
+        discount_total=discount_total,
         total=Decimal("0.00"),
     )
     session.add(order)
@@ -599,14 +694,18 @@ async def checkout(
     for shop_id, shop_entries in grouped.items():
         shop = shop_entries[0][3]
         fulfillment_subtotal = Decimal("0.00")
+        fulfillment_discount = discounts_by_shop.get(shop_id, Decimal("0.00"))
         fulfillment = FulfillmentOrder(
             order_id=order.id,
             shop_id=shop_id,
             shop_name=shop.name,
             fulfillment_number=f"FUL-{uuid4().hex[:12].upper()}",
             status="pending",
-            subtotal=Decimal("0.00"),
+            subtotal=subtotal_by_shop[shop_id],
             shipping_fee=SHIPPING_FEE_PER_VENDOR,
+            discount_total=fulfillment_discount,
+            commission_rate_bps=settings.commission_rate_bps,
+            commission_amount=Decimal("0.00"),
         )
         session.add(fulfillment)
         await session.flush()
@@ -653,6 +752,14 @@ async def checkout(
                 shop_id=shop.id,
             )
         fulfillment.subtotal = fulfillment_subtotal
+        commission_base = fulfillment_subtotal - (
+            fulfillment_discount
+            if promotion and promotion.sponsor_type == "vendor"
+            else Decimal("0.00")
+        )
+        fulfillment.commission_amount = (
+            commission_base * Decimal(settings.commission_rate_bps) / Decimal("10000")
+        ).quantize(MONEY, rounding=ROUND_HALF_UP)
         session.add(
             PaymentTransaction(
                 order_id=order.id,
@@ -660,7 +767,7 @@ async def checkout(
                 transaction_type="charge",
                 method="cash_on_delivery",
                 status="pending",
-                amount=fulfillment_subtotal + SHIPPING_FEE_PER_VENDOR,
+                amount=fulfillment_subtotal + SHIPPING_FEE_PER_VENDOR - fulfillment_discount,
             )
         )
         subtotal += fulfillment_subtotal
@@ -668,7 +775,9 @@ async def checkout(
 
     order.subtotal = subtotal
     order.shipping_total = shipping_total
-    order.total = subtotal + shipping_total
+    order.total = subtotal + shipping_total - discount_total
+    if promotion is not None:
+        promotion.redemption_count += 1
     for item in cart_items:
         await session.delete(item)
     try:
@@ -731,6 +840,7 @@ async def get_order_invoice(
         shipping_address=order.shipping_address,
         subtotal=order.subtotal,
         shipping_total=order.shipping_total,
+        discount_total=order.discount_total,
         total=order.total,
         fulfillments=order_read.fulfillments,
     )
@@ -803,9 +913,19 @@ async def request_return(
     delivered_at = delivered_event.created_at if delivered_event is not None else None
     if delivered_at is not None and delivered_at.tzinfo is None:
         delivered_at = delivered_at.replace(tzinfo=timezone.utc)
-    if delivered_at is None or delivered_at < datetime.now(timezone.utc) - RETURN_WINDOW:
+    settings = await session.scalar(select(PlatformSettings).where(PlatformSettings.id == 1))
+    if settings is None:
         raise APIError(
-            409, "return_window_expired", "Returns must be requested within 7 days of delivery."
+            503,
+            "platform_settings_unavailable",
+            "Platform settings are unavailable. Apply the latest database migration.",
+        )
+    return_window = timedelta(days=settings.return_window_days)
+    if delivered_at is None or delivered_at < datetime.now(timezone.utc) - return_window:
+        raise APIError(
+            409,
+            "return_window_expired",
+            f"Returns must be requested within {settings.return_window_days} days of delivery.",
         )
     await _record_status_change(
         session,

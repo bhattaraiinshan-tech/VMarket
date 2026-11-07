@@ -52,6 +52,10 @@ class CustomerOrder(Base):
             "subtotal >= 0 AND shipping_total >= 0 AND total >= 0",
             name="ck_orders_amounts_nonnegative",
         ),
+        CheckConstraint(
+            "discount_total >= 0 AND discount_total <= subtotal",
+            name="ck_orders_discount_within_subtotal",
+        ),
         CheckConstraint("payment_method = 'cash_on_delivery'", name="ck_orders_payment_method"),
         CheckConstraint(
             "status IN ('pending', 'in_progress', 'completed', 'partially_cancelled', "
@@ -68,6 +72,9 @@ class CustomerOrder(Base):
     order_number: Mapped[str] = mapped_column(String(40), unique=True, index=True)
     invoice_number: Mapped[str] = mapped_column(String(48), unique=True)
     idempotency_key: Mapped[str] = mapped_column(String(128))
+    promotion_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("promotions.id", ondelete="SET NULL"), index=True
+    )
     address_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("delivery_addresses.id", ondelete="SET NULL")
     )
@@ -78,6 +85,9 @@ class CustomerOrder(Base):
     )
     subtotal: Mapped[Decimal] = mapped_column(Numeric(14, 2))
     shipping_total: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    discount_total: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2), default=Decimal("0.00"), server_default="0"
+    )
     total: Mapped[Decimal] = mapped_column(Numeric(14, 2))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -90,6 +100,18 @@ class FulfillmentOrder(Base):
     __table_args__ = (
         CheckConstraint(
             "subtotal >= 0 AND shipping_fee >= 0", name="ck_fulfillment_orders_amounts_nonnegative"
+        ),
+        CheckConstraint(
+            "discount_total >= 0 AND discount_total <= subtotal",
+            name="ck_fulfillment_orders_discount_within_subtotal",
+        ),
+        CheckConstraint(
+            "commission_amount >= 0",
+            name="ck_fulfillment_orders_commission_nonnegative",
+        ),
+        CheckConstraint(
+            "commission_rate_bps BETWEEN 300 AND 500",
+            name="ck_fulfillment_orders_commission_rate",
         ),
         CheckConstraint(
             "status IN ('pending', 'confirmed', 'processing', 'shipped', 'delivered', "
@@ -111,6 +133,13 @@ class FulfillmentOrder(Base):
     status: Mapped[str] = mapped_column(String(32), default="pending", server_default="pending")
     subtotal: Mapped[Decimal] = mapped_column(Numeric(14, 2))
     shipping_fee: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    discount_total: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2), default=Decimal("0.00"), server_default="0"
+    )
+    commission_rate_bps: Mapped[int] = mapped_column(Integer, default=300, server_default="300")
+    commission_amount: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2), default=Decimal("0.00"), server_default="0"
+    )
     tracking_number: Mapped[str | None] = mapped_column(String(120))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

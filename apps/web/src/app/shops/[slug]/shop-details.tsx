@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 
 import { Product, ProductPage, Shop, requestApi } from '@/lib/api';
 import { browserStorageUrl } from '@/lib/network';
+import FraudReportForm from '@/app/fraud-report-form';
 
 export default function ShopDetails({ slug }: { slug: string }) {
   const [shop, setShop] = useState<Shop | null>(null);
@@ -82,6 +83,7 @@ export default function ShopDetails({ slug }: { slug: string }) {
           <p className="mt-3 text-sm text-emerald-200">{shop.address}</p>
         )}
       </header>
+      <FraudReportForm targetType="shop" targetId={shop.id} />
       <section className="mt-9">
         <h2 className="text-2xl font-bold text-slate-950">Approved listings</h2>
         {products.length ? (

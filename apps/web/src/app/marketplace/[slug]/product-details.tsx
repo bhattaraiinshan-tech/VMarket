@@ -12,6 +12,7 @@ import {
   ProductReview,
   requestApi,
 } from '@/lib/api';
+import FraudReportForm from '@/app/fraud-report-form';
 
 export default function ProductDetails({ slug }: { slug: string }) {
   const router = useRouter();
@@ -350,6 +351,7 @@ export default function ProductDetails({ slug }: { slug: string }) {
           )}
         </div>
       </section>
+      <FraudReportForm targetType="product" targetId={product.id} />
       <section
         aria-labelledby="product-reviews-heading"
         className="mt-12 border-t border-slate-200 pt-8"

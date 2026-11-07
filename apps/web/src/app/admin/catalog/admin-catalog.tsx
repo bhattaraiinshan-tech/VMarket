@@ -184,6 +184,12 @@ export default function AdminCatalog() {
         >
           Marketplace
         </Link>
+        <Link
+          className="text-sm font-semibold text-emerald-800"
+          href="/admin/operations"
+        >
+          Operations
+        </Link>
       </header>
       {(message || error) && (
         <p

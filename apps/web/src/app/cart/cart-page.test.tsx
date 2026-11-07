@@ -139,6 +139,7 @@ describe('cart checkout', () => {
       address_id: 'address-1',
       payment_method: 'cash_on_delivery',
       idempotency_key: 'stable-checkout-idempotency-key',
+      promotion_code: null,
     });
   });
 });

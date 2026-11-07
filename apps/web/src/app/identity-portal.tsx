@@ -526,12 +526,20 @@ export default function IdentityPortal() {
               </Link>
             )}
             {user.roles.includes('admin') && (
-              <Link
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
-                href="/admin/catalog"
-              >
-                Catalogue admin
-              </Link>
+              <>
+                <Link
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+                  href="/admin/catalog"
+                >
+                  Catalogue admin
+                </Link>
+                <Link
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+                  href="/admin/operations"
+                >
+                  Operations
+                </Link>
+              </>
             )}
             <button
               className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"

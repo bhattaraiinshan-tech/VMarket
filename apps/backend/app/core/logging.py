@@ -18,7 +18,7 @@ class JsonFormatter(logging.Formatter):
         request_id = getattr(record, "request_id", None) or request_id_var.get()
         if request_id:
             payload["request_id"] = request_id
-        for field in ("dependency", "error_code"):
+        for field in ("dependency", "error_code", "failure_type", "provider_error"):
             value = getattr(record, field, None)
             if value is not None:
                 payload[field] = value

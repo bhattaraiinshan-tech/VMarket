@@ -46,10 +46,57 @@ def test_brevo_sends_expected_payload_with_verified_tls(brevo_connection: MagicM
     client.close.assert_called_once()
 
 
-@pytest.mark.parametrize("status", [301, 401, 403, 429, 500])
-def test_brevo_rejections_are_not_success(
-    brevo_connection: MagicMock, status: int
+@pytest.mark.parametrize("status", [502, 503, 504])
+def test_brevo_retries_transient_server_errors_once(
+    brevo_connection: MagicMock, monkeypatch: pytest.MonkeyPatch, status: int
 ) -> None:
+    client = brevo_connection.return_value
+    transient_response = MagicMock(status=status)
+    successful_response = MagicMock(status=201)
+    successful_response.read.return_value = b'{"messageId":"email-id"}'
+    client.getresponse.side_effect = [transient_response, successful_response]
+    monkeypatch.setattr(email.time, "sleep", MagicMock())
+
+    email.send_identity_email("recipient@example.com", "Reset", "Reset link")
+
+    assert client.request.call_count == 2
+    assert (
+        client.request.call_args_list[0].kwargs["body"]
+        == client.request.call_args_list[1].kwargs["body"]
+    )
+    email.time.sleep.assert_called_once_with(1)
+
+
+def test_brevo_stops_after_one_transient_server_error_retry(
+    brevo_connection: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = brevo_connection.return_value
+    client.getresponse.side_effect = [MagicMock(status=503), MagicMock(status=503)]
+    monkeypatch.setattr(email.time, "sleep", MagicMock())
+
+    with pytest.raises(email.EmailDeliveryError, match="HTTP 503"):
+        email.send_identity_email("recipient@example.com", "Reset", "Reset link")
+
+    assert client.request.call_count == 2
+    email.time.sleep.assert_called_once_with(1)
+
+
+def test_brevo_error_includes_safe_provider_code(brevo_connection: MagicMock) -> None:
+    client = brevo_connection.return_value
+    client.getresponse.return_value.status = 403
+    client.getresponse.return_value.read.return_value = (
+        b'{"code":"permission_denied","message":"Sensitive details"}'
+    )
+
+    with pytest.raises(
+        email.EmailDeliveryError,
+        match=r"Brevo rejected email \(HTTP 403; code=permission_denied\)",
+    ):
+        email.send_identity_email("recipient@example.com", "Reset", "Reset link")
+
+
+@pytest.mark.parametrize("status", [301, 401, 403, 429, 500])
+def test_brevo_rejections_are_not_success(brevo_connection: MagicMock, status: int) -> None:
     client = brevo_connection.return_value
     client.getresponse.return_value.status = status
     with pytest.raises(email.EmailDeliveryError, match=f"HTTP {status}"):
@@ -90,8 +137,13 @@ async def test_api_failure_becomes_delivery_unavailable(
 
 def test_smtp_mode_remains_available(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = Settings(
-        _env_file=None, mail_provider="smtp", mail_username="", mail_password="",
-        mail_host="localhost", mail_port=1025, mail_starttls=False,
+        _env_file=None,
+        mail_provider="smtp",
+        mail_username="",
+        mail_password="",
+        mail_host="localhost",
+        mail_port=1025,
+        mail_starttls=False,
     )
     monkeypatch.setattr(email, "get_settings", lambda: settings)
     smtp = MagicMock()

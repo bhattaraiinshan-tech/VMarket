@@ -180,6 +180,7 @@ describe('identity account controls', () => {
   });
 
   it('updates an owned address and revokes another active session', async () => {
+    let profile = { full_name: 'Test Customer', phone: null as string | null };
     let address = {
       id: 'address-1',
       label: 'Home',
@@ -212,6 +213,9 @@ describe('identity account controls', () => {
         let payload: unknown;
 
         if (path === '/me') {
+          if (init?.method === 'PATCH') {
+            profile = JSON.parse(String(init.body)) as typeof profile;
+          }
           payload = {
             id: 'user-1',
             email: 'customer@example.com',
@@ -219,7 +223,7 @@ describe('identity account controls', () => {
             account_status: 'active',
             roles: ['customer'],
             vendor_profile: null,
-            profile: { full_name: 'Test Customer', phone: null },
+            profile,
           };
         } else if (
           path.startsWith('/me/addresses/') &&
@@ -251,9 +255,50 @@ describe('identity account controls', () => {
     render(<IdentityPortal />);
 
     await screen.findByRole('heading', { name: 'Signed-in sessions' });
+    expect(
+      screen.getByRole('heading', { name: 'Profile' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Delivery addresses' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Security and actions' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Download my personal data' }),
+    ).toBeInTheDocument();
     expect(await screen.findByText('Other browser')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByLabelText('Full name'), {
+      target: { value: 'Updated Customer' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(
+      await screen.findByText('Your profile has been updated.'),
+    ).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(
+        ([, init]) =>
+          init?.method === 'PATCH' &&
+          String(init.body).includes('Updated Customer'),
+      ),
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add new address' }));
+    expect(
+      screen.getByRole('button', { name: 'Add address' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Label' })).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(
+      screen.queryByRole('button', { name: 'Add address' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Add new address' }),
+    ).toHaveFocus();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Home address' }));
+    expect(screen.getByRole('textbox', { name: 'Label' })).toHaveFocus();
     fireEvent.change(screen.getByRole('textbox', { name: 'Label' }), {
       target: { value: 'Work' },
     });
@@ -264,7 +309,9 @@ describe('identity account controls', () => {
       fetchMock.mock.calls.some(([, init]) => init?.method === 'PUT'),
     ).toBe(true);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Revoke session' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Revoke session: Other browser' }),
+    );
     await waitFor(() => {
       expect(
         screen.getByText('No active sessions were found.'),
@@ -273,6 +320,57 @@ describe('identity account controls', () => {
     expect(
       fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE'),
     ).toBe(true);
+  });
+
+  it('does not present failed account data as empty addresses or sessions', async () => {
+    setWorkspaceUser({
+      id: 'user-1',
+      email: 'customer@example.com',
+      email_verified: true,
+      account_status: 'active',
+      roles: ['customer'],
+      vendor_profile: null,
+      profile: { full_name: 'Test Customer', phone: null },
+    });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = new URL(String(input), 'http://localhost:3000').pathname;
+      if (path.endsWith('/me')) {
+        return Response.json({
+          id: 'user-1',
+          email: 'customer@example.com',
+          email_verified: true,
+          account_status: 'active',
+          roles: ['customer'],
+          vendor_profile: null,
+          profile: { full_name: 'Test Customer', phone: null },
+        });
+      }
+      if (path.endsWith('/auth/sessions')) {
+        return Response.json(
+          { error: { message: 'Sessions unavailable' } },
+          { status: 503 },
+        );
+      }
+      return Response.json([]);
+    });
+
+    render(<IdentityPortal />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Sessions unavailable',
+    );
+    expect(
+      screen.getByText('Addresses could not be loaded.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Sessions could not be loaded.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('No active sessions were found.'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Add an address to make future checkout faster.'),
+    ).not.toBeInTheDocument();
   });
 
   it('lets administrators suspend accounts and review the audit trail', async () => {

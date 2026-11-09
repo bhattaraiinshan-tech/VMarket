@@ -108,7 +108,11 @@ function ProductCard({
   );
 }
 
-export default function Marketplace() {
+export default function Marketplace({
+  initialSearch = '',
+}: {
+  initialSearch?: string;
+}) {
   const { workspace, user } = useWorkspace();
   const [categories, setCategories] = useState<Category[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -117,8 +121,11 @@ export default function Marketplace() {
   const [shopSearchState, setShopSearchState] = useState<
     'idle' | 'loading' | 'success' | 'error'
   >('idle');
-  const [filters, setFilters] = useState(initialFilters);
-  const [draft, setDraft] = useState(initialFilters);
+  const [filters, setFilters] = useState({
+    ...initialFilters,
+    q: initialSearch,
+  });
+  const [draft, setDraft] = useState({ ...initialFilters, q: initialSearch });
   const [page, setPage] = useState(1);
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');

@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ApiError, requestApi as request } from '@/lib/api';
 import { useWorkspace } from '@/lib/workspace-context';
@@ -99,6 +99,9 @@ export default function IdentityPortal({
   const { user, workspace } = useWorkspace();
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [sessions, setSessions] = useState<AuthSession[]>([]);
+  const [accountDataState, setAccountDataState] = useState<
+    'loading' | 'ready' | 'error'
+  >('loading');
   const [applications, setApplications] = useState<VendorApplication[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminAccount[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
@@ -126,6 +129,10 @@ export default function IdentityPortal({
   const [deactivationPassword, setDeactivationPassword] = useState('');
   const [addressDraft, setAddressDraft] = useState(emptyAddress);
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
+  const [showAddressForm, setShowAddressForm] = useState(false);
+  const addressLabelRef = useRef<HTMLInputElement>(null);
+  const addAddressButtonRef = useRef<HTMLButtonElement>(null);
+  const addressFormWasOpen = useRef(false);
   const [businessName, setBusinessName] = useState('');
   const [businessType, setBusinessType] = useState('');
   const [businessAddress, setBusinessAddress] = useState('');
@@ -135,6 +142,15 @@ export default function IdentityPortal({
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (showAddressForm) {
+      addressLabelRef.current?.focus();
+    } else if (addressFormWasOpen.current) {
+      addAddressButtonRef.current?.focus();
+    }
+    addressFormWasOpen.current = showAddressForm;
+  }, [showAddressForm]);
 
   useEffect(() => {
     if (!user) return;
@@ -176,9 +192,11 @@ export default function IdentityPortal({
           setAdminUsers([]);
           setAuditEvents([]);
         }
+        setAccountDataState('ready');
       })
       .catch((cause: unknown) => {
         if (!(cause instanceof DOMException && cause.name === 'AbortError')) {
+          setAccountDataState('error');
           setError(
             cause instanceof Error
               ? cause.message
@@ -335,6 +353,7 @@ export default function IdentityPortal({
       setAddresses(await request<Address[]>('/me/addresses'));
       setAddressDraft(emptyAddress);
       setEditingAddressId(null);
+      setShowAddressForm(false);
       setMessage(
         editingAddressId
           ? 'Delivery address updated.'
@@ -345,6 +364,7 @@ export default function IdentityPortal({
 
   function editAddress(address: Address) {
     setEditingAddressId(address.id);
+    setShowAddressForm(true);
     setAddressDraft({
       label: address.label,
       recipient_name: address.recipient_name,
@@ -553,13 +573,19 @@ export default function IdentityPortal({
     );
 
     return (
-      <main className="mx-auto min-h-screen w-full max-w-5xl px-5 py-8 sm:px-8">
-        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-5">
+      <main
+        className={`mx-auto min-h-screen w-full px-5 py-8 sm:px-8 ${!adminOnly && workspace === 'customer' ? 'account-dashboard max-w-7xl' : 'max-w-5xl'}`}
+      >
+        <header
+          className={`flex flex-wrap items-center justify-between gap-4 ${!adminOnly && workspace === 'customer' ? 'pb-2' : 'border-b border-slate-200 pb-5'}`}
+        >
           <div>
-            <p className="text-sm font-bold text-emerald-800">
-              Vendor&apos;s Market
-            </p>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight">
+            {(adminOnly || workspace !== 'customer') && (
+              <p className="text-sm font-bold text-emerald-800">
+                Vendor&apos;s Market
+              </p>
+            )}
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
               {adminOnly ? 'Platform administration' : 'Your account'}
             </h1>
           </div>
@@ -616,14 +642,31 @@ export default function IdentityPortal({
         )}
 
         {!adminOnly && workspace === 'customer' && (
-          <section className="mt-8 grid gap-6 lg:grid-cols-2">
-            <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <section className="mt-6 grid gap-5 md:grid-cols-2">
+            <article className="account-card">
               <h2 className="text-lg font-semibold">Profile</h2>
-              <p className="mt-1 text-sm text-slate-600">{user.email}</p>
-              <p className="mt-1 text-xs text-emerald-800">
-                {user.email_verified ? 'Email verified' : 'Email not verified'}{' '}
-                | {user.roles.join(', ')}
-              </p>
+              <div className="mt-4 flex min-w-0 items-center gap-4">
+                <div
+                  aria-label="Profile initial"
+                  className="account-avatar"
+                  role="img"
+                >
+                  {(user.profile?.full_name || user.email)
+                    .trim()
+                    .slice(0, 1)
+                    .toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <p className="break-all text-sm font-medium text-slate-800">
+                    {user.email}
+                  </p>
+                  <p className="mt-2 inline-flex rounded-full bg-teal-50 px-2 py-1 text-xs font-semibold text-teal-900">
+                    {user.email_verified
+                      ? 'Email verified'
+                      : 'Email not verified'}
+                  </p>
+                </div>
+              </div>
               <form className="mt-5 space-y-4" onSubmit={updateProfile}>
                 <label className="block text-sm font-medium">
                   Full name
@@ -647,57 +690,31 @@ export default function IdentityPortal({
                   />
                 </label>
                 <button
-                  className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
+                  className="w-full rounded-lg bg-teal-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-900 disabled:opacity-60"
                   disabled={busy || workspace !== 'customer'}
                   type="submit"
                 >
-                  Save profile
-                </button>
-              </form>
-              <button
-                className="mt-4 text-sm font-medium text-emerald-800 underline underline-offset-2"
-                disabled={busy}
-                onClick={() => void exportAccountData()}
-                type="button"
-              >
-                Download my personal data
-              </button>
-              <form
-                className="mt-5 border-t border-slate-200 pt-4"
-                onSubmit={deactivateAccount}
-              >
-                <label className="block text-sm font-medium">
-                  Deactivate account
-                  <input
-                    autoComplete="current-password"
-                    className={inputClassName()}
-                    onChange={(event) =>
-                      setDeactivationPassword(event.target.value)
-                    }
-                    placeholder="Confirm your password"
-                    required
-                    type="password"
-                    value={deactivationPassword}
-                  />
-                </label>
-                <button
-                  className="mt-3 rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-800 hover:bg-red-50 disabled:opacity-60"
-                  disabled={busy || user.roles.includes('admin')}
-                  type="submit"
-                >
-                  Deactivate account
+                  Save changes
                 </button>
               </form>
             </article>
 
             {workspace === 'customer' && (
-              <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <article className="account-card">
                 <h2 className="text-lg font-semibold">Delivery addresses</h2>
-                {addresses.length > 0 ? (
+                {accountDataState === 'loading' ? (
+                  <p className="mt-3 text-sm text-slate-600" role="status">
+                    Loading addresses...
+                  </p>
+                ) : accountDataState === 'error' ? (
+                  <p className="mt-3 text-sm text-red-800">
+                    Addresses could not be loaded.
+                  </p>
+                ) : addresses.length > 0 ? (
                   <ul className="mt-3 space-y-2">
                     {addresses.map((address) => (
                       <li
-                        className="rounded-lg bg-slate-50 p-3 text-sm"
+                        className="rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-sm"
                         key={address.id}
                       >
                         <div className="flex flex-wrap items-start justify-between gap-2">
@@ -713,7 +730,8 @@ export default function IdentityPortal({
                           </div>
                           <div className="flex gap-3">
                             <button
-                              className="font-medium text-emerald-800 underline"
+                              aria-label={`Edit ${address.label} address`}
+                              className="rounded-lg border border-slate-300 px-3 py-2 font-semibold text-teal-800 hover:bg-teal-50"
                               disabled={busy}
                               onClick={() => editAddress(address)}
                               type="button"
@@ -721,7 +739,8 @@ export default function IdentityPortal({
                               Edit
                             </button>
                             <button
-                              className="font-medium text-red-800 underline"
+                              aria-label={`Delete ${address.label} address`}
+                              className="rounded-lg border border-slate-300 px-3 py-2 font-semibold text-red-800 hover:bg-red-50"
                               disabled={busy}
                               onClick={() => void removeAddress(address)}
                               type="button"
@@ -738,119 +757,187 @@ export default function IdentityPortal({
                     Add an address to make future checkout faster.
                   </p>
                 )}
-                <form
-                  className="mt-5 grid gap-3 sm:grid-cols-2"
-                  onSubmit={addAddress}
-                >
-                  {(
-                    [
-                      ['label', 'Label'],
-                      ['recipient_name', 'Recipient name'],
-                      ['phone', 'Phone'],
-                      ['province', 'Province'],
-                      ['city', 'City / municipality'],
-                      ['area', 'Area'],
-                      ['street_address', 'Street address'],
-                      ['postal_code', 'Postal code'],
-                    ] as const
-                  ).map(([field, label]) => (
-                    <label className="text-sm font-medium" key={field}>
-                      {label}
+                {!showAddressForm && accountDataState === 'ready' && (
+                  <button
+                    className="mt-5 w-full rounded-lg bg-teal-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-900 disabled:opacity-60"
+                    disabled={busy}
+                    onClick={() => setShowAddressForm(true)}
+                    ref={addAddressButtonRef}
+                    type="button"
+                  >
+                    Add new address
+                  </button>
+                )}
+                {showAddressForm && (
+                  <form
+                    className="mt-5 grid gap-3 sm:grid-cols-2"
+                    id="address-form"
+                    onSubmit={addAddress}
+                  >
+                    {(
+                      [
+                        ['label', 'Label'],
+                        ['recipient_name', 'Recipient name'],
+                        ['phone', 'Phone'],
+                        ['province', 'Province'],
+                        ['city', 'City / municipality'],
+                        ['area', 'Area'],
+                        ['street_address', 'Street address'],
+                        ['postal_code', 'Postal code'],
+                      ] as const
+                    ).map(([field, label]) => (
+                      <label className="text-sm font-medium" key={field}>
+                        {label}
+                        <input
+                          className={inputClassName()}
+                          ref={field === 'label' ? addressLabelRef : undefined}
+                          onChange={(event) =>
+                            setAddressDraft((current) => ({
+                              ...current,
+                              [field]: event.target.value,
+                            }))
+                          }
+                          required={field !== 'area' && field !== 'postal_code'}
+                          value={addressDraft[field]}
+                        />
+                      </label>
+                    ))}
+                    <label className="flex items-center gap-2 text-sm sm:col-span-2">
                       <input
-                        className={inputClassName()}
+                        checked={addressDraft.is_default}
                         onChange={(event) =>
                           setAddressDraft((current) => ({
                             ...current,
-                            [field]: event.target.value,
+                            is_default: event.target.checked,
                           }))
                         }
-                        required={field !== 'area' && field !== 'postal_code'}
-                        value={addressDraft[field]}
+                        type="checkbox"
                       />
+                      Make this my default address
                     </label>
-                  ))}
-                  <label className="flex items-center gap-2 text-sm sm:col-span-2">
-                    <input
-                      checked={addressDraft.is_default}
-                      onChange={(event) =>
-                        setAddressDraft((current) => ({
-                          ...current,
-                          is_default: event.target.checked,
-                        }))
-                      }
-                      type="checkbox"
-                    />
-                    Make this my default address
-                  </label>
-                  <button
-                    className="w-fit rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60 sm:col-span-2"
-                    disabled={busy}
-                    type="submit"
-                  >
-                    {editingAddressId ? 'Save address' : 'Add address'}
-                  </button>
-                  {editingAddressId && (
+                    <button
+                      className="w-fit rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60 sm:col-span-2"
+                      disabled={busy}
+                      type="submit"
+                    >
+                      {editingAddressId ? 'Save address' : 'Add address'}
+                    </button>
                     <button
                       className="w-fit rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50 sm:col-span-2"
                       disabled={busy}
                       onClick={() => {
                         setEditingAddressId(null);
                         setAddressDraft(emptyAddress);
+                        setShowAddressForm(false);
                       }}
                       type="button"
                     >
-                      Cancel editing
+                      {editingAddressId ? 'Cancel editing' : 'Cancel'}
                     </button>
-                  )}
-                </form>
+                  </form>
+                )}
               </article>
             )}
           </section>
         )}
 
         {!adminOnly && (
-          <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold">Signed-in sessions</h2>
-            {sessions.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-600">
-                No active sessions were found.
-              </p>
-            ) : (
-              <ul className="mt-3 space-y-3">
-                {sessions.map((authSession) => (
-                  <li
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 p-3 text-sm"
-                    key={authSession.id}
-                  >
-                    <div>
-                      <p className="font-semibold">
-                        {authSession.user_agent || 'Unknown device'}
-                        {authSession.current ? ' - This device' : ''}
-                      </p>
-                      <p className="mt-1 text-slate-600">
-                        Signed in{' '}
-                        {new Date(authSession.created_at).toLocaleString()} |
-                        Last active{' '}
-                        {new Date(authSession.last_seen_at).toLocaleString()}
-                      </p>
-                    </div>
-                    <button
-                      className="font-medium text-red-800 underline"
-                      disabled={busy}
-                      onClick={() => void revokeSession(authSession)}
-                      type="button"
+          <div className="mt-5 grid items-start gap-5">
+            <section className="account-card">
+              <h2 className="text-lg font-semibold">Signed-in sessions</h2>
+              {accountDataState === 'loading' ? (
+                <p className="mt-3 text-sm text-slate-600" role="status">
+                  Loading sessions...
+                </p>
+              ) : accountDataState === 'error' ? (
+                <p className="mt-3 text-sm text-red-800">
+                  Sessions could not be loaded.
+                </p>
+              ) : sessions.length === 0 ? (
+                <p className="mt-2 text-sm text-slate-600">
+                  No active sessions were found.
+                </p>
+              ) : (
+                <ul className="mt-3 space-y-3">
+                  {sessions.map((authSession) => (
+                    <li
+                      className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 py-3 text-sm last:border-0"
+                      key={authSession.id}
                     >
-                      {authSession.current ? 'Sign out' : 'Revoke session'}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold">
+                          {authSession.user_agent || 'Unknown device'}
+                          {authSession.current ? ' - This device' : ''}
+                        </p>
+                        <p className="mt-1 text-slate-600">
+                          Signed in{' '}
+                          {new Date(authSession.created_at).toLocaleString()} |
+                          Last active{' '}
+                          {new Date(authSession.last_seen_at).toLocaleString()}
+                        </p>
+                      </div>
+                      <button
+                        aria-label={
+                          authSession.current
+                            ? 'Sign out of this device'
+                            : `Revoke session: ${authSession.user_agent || 'Unknown device'}`
+                        }
+                        className="rounded-lg border border-slate-300 px-3 py-2 font-semibold text-red-800 hover:bg-red-50 disabled:opacity-60"
+                        disabled={busy}
+                        onClick={() => void revokeSession(authSession)}
+                        type="button"
+                      >
+                        {authSession.current ? 'Sign out' : 'Revoke session'}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+            {workspace === 'customer' && (
+              <section className="account-card">
+                <h2 className="text-lg font-semibold">Security and actions</h2>
+                <button
+                  className="mt-4 text-sm font-medium text-emerald-800 underline underline-offset-2"
+                  disabled={busy}
+                  onClick={() => void exportAccountData()}
+                  type="button"
+                >
+                  Download my personal data
+                </button>
+                <form
+                  className="mt-5 border-t border-slate-200 pt-4"
+                  onSubmit={deactivateAccount}
+                >
+                  <label className="block text-sm font-medium">
+                    Deactivate account
+                    <input
+                      autoComplete="current-password"
+                      className={inputClassName()}
+                      onChange={(event) =>
+                        setDeactivationPassword(event.target.value)
+                      }
+                      placeholder="Confirm your password"
+                      required
+                      type="password"
+                      value={deactivationPassword}
+                    />
+                  </label>
+                  <button
+                    className="mt-3 rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-800 hover:bg-red-50 disabled:opacity-60"
+                    disabled={busy || user.roles.includes('admin')}
+                    type="submit"
+                  >
+                    Deactivate account
+                  </button>
+                </form>
+              </section>
             )}
-          </section>
+          </div>
         )}
 
         {!adminOnly && workspace === 'customer' && (
-          <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <section className="account-card mt-5">
             <h2 className="text-lg font-semibold">Vendor workspace access</h2>
             {applications.map((application) => (
               <p className="mt-2 text-sm text-slate-700" key={application.id}>

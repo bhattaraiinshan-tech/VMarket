@@ -60,6 +60,31 @@ main[tabindex='-1']:focus {
   outline: none;
 }
 
+#main-content:has(.account-dashboard) {
+  background: #d6f1ec;
+}
+
+.account-card {
+  border: 1px solid #d5e0de;
+  border-radius: 1rem;
+  background: #fff;
+  padding: 1.5rem;
+  box-shadow: 0 3px 8px rgb(23 43 38 / 8%);
+}
+
+.account-avatar {
+  display: grid;
+  width: 4.5rem;
+  height: 4.5rem;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  background: #e4efed;
+  color: #155e54;
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
 input,
 select,
 textarea {

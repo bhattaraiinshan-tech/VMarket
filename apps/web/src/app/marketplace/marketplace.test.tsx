@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installTestWorkspace } from '@/test-workspace';
 
 import Marketplace from './marketplace';
+import MarketplacePage from './page';
 
 const product = {
   id: 'product-1',
@@ -94,6 +95,23 @@ afterEach(() => {
 
 describe('marketplace', () => {
   beforeEach(() => installTestWorkspace());
+  it('applies a search submitted from the account header', async () => {
+    const fetchMock = installFetchMock();
+    render(
+      await MarketplacePage({
+        searchParams: Promise.resolve({ q: 'woven basket' }),
+      }),
+    );
+    expect(await screen.findByDisplayValue('woven basket')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining(
+          '/catalog/products?page=1&page_size=24&sort=newest&q=woven+basket',
+        ),
+        expect.anything(),
+      ),
+    );
+  });
   it.each(['customer', 'vendor', 'admin'] as const)(
     'shows only valid %s header actions',
     async (workspace) => {

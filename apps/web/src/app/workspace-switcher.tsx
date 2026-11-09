@@ -12,7 +12,11 @@ import {
   type Workspace,
 } from '@/lib/workspace-state';
 
-export default function WorkspaceSwitcher() {
+export default function WorkspaceSwitcher({
+  accountHeader = false,
+}: {
+  accountHeader?: boolean;
+}) {
   const { user, workspace, shopId } = useWorkspace();
   const { shops, loading, error: shopError, refresh } = useWorkspaceShops();
   const [creating, setCreating] = useState(false);
@@ -83,12 +87,158 @@ export default function WorkspaceSwitcher() {
               ['/notifications', 'Admin notifications'],
             ]
           : [];
+  if (accountHeader && workspace === 'customer') {
+    return (
+      <header
+        aria-label="Workspace selection"
+        className="border-b border-slate-200 bg-white px-5 py-3 text-sm text-slate-950 sm:px-8"
+      >
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 sm:gap-5">
+          <Link
+            className="mr-auto text-lg font-bold tracking-tight text-teal-950 sm:mr-0"
+            href="/"
+          >
+            Vendor&apos;s Market
+          </Link>
+          <form
+            action="/marketplace"
+            className="order-last flex w-full flex-1 sm:order-none sm:min-w-40"
+            role="search"
+          >
+            <label className="sr-only" htmlFor="account-search">
+              Search products
+            </label>
+            <input
+              id="account-search"
+              name="q"
+              type="search"
+              placeholder="Search products..."
+              className="min-w-0 flex-1 rounded-l-lg border border-slate-300 px-3 py-2"
+            />
+            <button
+              type="submit"
+              className="rounded-r-lg border border-l-0 border-slate-300 px-3 font-semibold text-teal-800 hover:bg-teal-50"
+            >
+              Search
+            </button>
+          </form>
+          <nav aria-label="Quick links" className="flex items-center gap-1">
+            <Link
+              aria-label="Messages"
+              className="rounded-lg p-2 text-slate-800 hover:bg-teal-50"
+              href="/messages"
+            >
+              <svg
+                aria-hidden="true"
+                width="21"
+                height="21"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <rect x="3" y="5" width="18" height="14" rx="2" />
+                <path d="m3 7 9 6 9-6" />
+              </svg>
+            </Link>
+            <Link
+              aria-label="Notifications"
+              className="rounded-lg p-2 text-slate-800 hover:bg-teal-50"
+              href="/notifications"
+            >
+              <svg
+                aria-hidden="true"
+                width="21"
+                height="21"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M18 8a6 6 0 0 0-12 0c0 7-2 7-2 9h16c0-2-2-2-2-9M10 21h4" />
+              </svg>
+            </Link>
+            <Link
+              aria-label="Cart"
+              className="rounded-lg p-2 text-slate-800 hover:bg-teal-50"
+              href="/cart"
+            >
+              <svg
+                aria-hidden="true"
+                width="21"
+                height="21"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M2 3h2l2.4 11.4a2 2 0 0 0 2 1.6h9.8a2 2 0 0 0 2-1.6L22 7H5" />
+                <circle cx="9" cy="20" r="1" />
+                <circle cx="19" cy="20" r="1" />
+              </svg>
+            </Link>
+          </nav>
+          <details className="relative ml-auto">
+            <summary className="cursor-pointer rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 font-semibold text-teal-950">
+              Your account
+            </summary>
+            <div className="absolute right-0 z-20 mt-2 w-64 max-w-[calc(100vw-2.5rem)] rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+              <label className="block font-semibold">
+                Workspace
+                <select
+                  className="mt-2 w-full rounded-lg border border-slate-300 bg-white p-2 font-normal"
+                  value={workspace}
+                  onChange={(event) =>
+                    selectWorkspace(event.target.value as Workspace)
+                  }
+                >
+                  {availableWorkspaces(user).map((mode) => (
+                    <option key={mode} value={mode}>
+                      {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <nav
+                aria-label="customer navigation"
+                className="mt-3 grid gap-1 border-t border-slate-200 pt-2"
+              >
+                {links.map(([href, label]) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    className="rounded-md px-2 py-1.5 text-slate-700 hover:bg-teal-50"
+                  >
+                    {label}
+                  </Link>
+                ))}
+              </nav>
+            </div>
+          </details>
+        </div>
+      </header>
+    );
+  }
   return (
     <header
       aria-label="Workspace selection"
-      className="border-b border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-slate-950 sm:px-8"
+      className={`border-b px-5 py-4 text-sm text-slate-950 sm:px-8 ${workspace === 'customer' ? 'border-slate-200 bg-white' : 'border-emerald-200 bg-emerald-50'}`}
     >
       <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-5 gap-y-3">
+        {workspace === 'customer' && (
+          <Link
+            className="text-lg font-bold tracking-tight text-emerald-950"
+            href="/"
+          >
+            Vendor&apos;s Market
+          </Link>
+        )}
         <Link
           className="font-bold text-emerald-900 underline-offset-4 hover:underline"
           href="/"

@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -65,6 +66,36 @@ afterEach(() => {
 });
 
 describe('workspace-specific screens', () => {
+  it('connects the account header search and customer links to real routes', () => {
+    select('customer');
+    render(<WorkspaceSwitcher accountHeader />);
+    const search = screen.getByRole('search');
+    expect(search).toHaveAttribute('action', '/marketplace');
+    expect(screen.getByLabelText('Search products')).toHaveAttribute(
+      'name',
+      'q',
+    );
+    const quickLinks = within(
+      screen.getByRole('navigation', { name: 'Quick links' }),
+    );
+    expect(quickLinks.getByRole('link', { name: 'Messages' })).toHaveAttribute(
+      'href',
+      '/messages',
+    );
+    expect(
+      quickLinks.getByRole('link', { name: 'Notifications' }),
+    ).toHaveAttribute('href', '/notifications');
+    expect(quickLinks.getByRole('link', { name: 'Cart' })).toHaveAttribute(
+      'href',
+      '/cart',
+    );
+    fireEvent.click(screen.getByText('Your account'));
+    const selector = screen.getByLabelText('Workspace');
+    expect(selector).toHaveValue('customer');
+    expect(screen.getByRole('option', { name: 'Vendor' })).toBeInTheDocument();
+    fireEvent.change(selector, { target: { value: 'vendor' } });
+    expect(screen.getByLabelText('Shop')).toHaveValue('');
+  });
   it.each(['customer', 'vendor', 'admin'] as const)(
     'shows only %s navigation',
     (workspace) => {

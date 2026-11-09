@@ -48,6 +48,7 @@ from app.core.config import get_settings
 from app.core.errors import APIError
 from app.db.session import get_session
 from app.identity.dependencies import (
+    get_active_shop,
     get_current_admin,
     get_current_customer,
     get_current_vendor,
@@ -732,7 +733,7 @@ async def list_vendor_products(
 async def create_vendor_product(
     body: ProductCreate,
     user: Annotated[User, Depends(get_current_vendor)],
-    shop: Annotated[Shop, Depends(get_selected_shop)],
+    shop: Annotated[Shop, Depends(get_active_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ProductRead:
     category = await session.get(CatalogCategory, body.category_id)
@@ -807,8 +808,9 @@ async def update_vendor_product(
             ) from None
     for field, value in changes.items():
         setattr(product, field, value)
-    product.status = "pending"
-    product.moderation_notes = None
+    if set(changes) - {"stock"}:
+        product.status = "pending"
+        product.moderation_notes = None
     try:
         await session.commit()
     except IntegrityError:
@@ -880,8 +882,9 @@ async def update_product_variant(
         )
     for field, value in changes.items():
         setattr(variant, field, value)
-    product.status = "pending"
-    product.moderation_notes = None
+    if set(changes) - {"stock"}:
+        product.status = "pending"
+        product.moderation_notes = None
     try:
         await session.commit()
     except IntegrityError:

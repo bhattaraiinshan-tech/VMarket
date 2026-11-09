@@ -153,8 +153,10 @@ catalog/fulfillment/reviews/promotions/trade/support; owner-only Admin account a
 Admin visits to personal support link to the platform queue without requesting personal tickets. Product purchase,
 wishlist and customer messaging controls require Customer workspace; owned-shop purchases and wholesale RFQs are
 blocked. Vendor stock transfers can select approved products in other active owned shops even without a wholesale
-listing, independently of supplier search. Existing inactive-shop access rules and update-moderation behavior are
-unchanged.
+listing, independently of supplier search. Inactive shops retain access to existing fulfillment history and status
+updates, but cannot create new product listings, promotions, wholesale offers/orders, or retail checkouts. Stock-only
+product and variant updates preserve the current moderation state; edits to product or variant content still require
+review.
 
 Vendor fulfillment responses expose only that shop's items/financial events plus the order's delivery recipient,
 phone and address snapshot needed for shipping (not the customer's email/profile or other shops' fulfillment data).

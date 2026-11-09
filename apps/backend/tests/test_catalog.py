@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.catalog.models import Product
+from app.catalog.models import Product, Shop
 from app.db.base import Base
 from app.db.session import get_session
 from app.identity.models import (
@@ -369,6 +369,27 @@ async def test_catalogue_moderation_discovery_and_wishlist(
             ).all()
         )
         assert len(logs) == 3
+
+    await _sign_in(client, "catalog-vendor-session-token")
+    stock_update = await client.patch(
+        f"/api/v1/vendor/products/{product['id']}",
+        json={"stock": 12},
+    )
+    assert stock_update.status_code == 200
+    assert stock_update.json()["status"] == "approved"
+    variant_stock_update = await client.patch(
+        f"/api/v1/vendor/products/{product['id']}/variants/{variant.json()['id']}",
+        json={"stock": 9},
+    )
+    assert variant_stock_update.status_code == 200
+    async with factory() as session:
+        shop = await session.get(Shop, UUID(shop_id))
+        assert shop is not None
+        shop.is_active = False
+        await session.commit()
+    inactive_shop_product = await client.post("/api/v1/vendor/products", json=product_body)
+    assert inactive_shop_product.status_code == 409
+    assert inactive_shop_product.json()["error"]["code"] == "shop_inactive"
 
 
 @pytest.mark.asyncio

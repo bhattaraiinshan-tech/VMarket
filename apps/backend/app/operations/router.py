@@ -14,6 +14,7 @@ from app.core.errors import APIError
 from app.db.session import get_session
 from app.identity.dependencies import (
     WorkspaceContext,
+    get_active_shop,
     get_current_admin,
     get_current_user,
     get_selected_shop,
@@ -350,7 +351,7 @@ async def vendor_list_promotions(
 async def vendor_create_promotion(
     body: PromotionCreate,
     vendor: Annotated[User, Depends(get_current_user)],
-    shop: Annotated[Shop, Depends(get_selected_shop)],
+    shop: Annotated[Shop, Depends(get_active_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> PromotionRead:
     if shop.owner_user_id != vendor.id:

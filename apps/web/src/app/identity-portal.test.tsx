@@ -10,15 +10,59 @@ import { StrictMode } from 'react';
 
 import IdentityPortal from './identity-portal';
 import WorkspaceSwitcher from './workspace-switcher';
-import { setWorkspaceUser } from '@/lib/workspace-state';
+import { selectWorkspace, setWorkspaceUser } from '@/lib/workspace-state';
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   window.history.replaceState(null, '', '/');
+  setWorkspaceUser(null);
 });
 
 describe('identity account controls', () => {
+  it('keeps customer application data out of the administrator workspace', async () => {
+    setWorkspaceUser({
+      id: 'admin-user',
+      email: 'admin@example.com',
+      email_verified: true,
+      account_status: 'active',
+      roles: ['customer', 'admin'],
+      vendor_profile: null,
+      profile: { full_name: 'Platform Admin', phone: null },
+    });
+    selectWorkspace('admin');
+    const paths: string[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = new URL(String(input), 'http://localhost:3000').pathname;
+      paths.push(path);
+      if (path.endsWith('/me')) {
+        return Response.json({
+          id: 'admin-user',
+          email: 'admin@example.com',
+          email_verified: true,
+          account_status: 'active',
+          roles: ['customer', 'admin'],
+          vendor_profile: null,
+          profile: { full_name: 'Platform Admin', phone: null },
+        });
+      }
+      if (path.endsWith('/auth/sessions')) return Response.json([]);
+      return Response.json([]);
+    });
+
+    render(<IdentityPortal />);
+
+    expect(
+      await screen.findByText('There are no pending vendor applications.'),
+    ).toBeInTheDocument();
+    expect(
+      paths.some((path) => path.endsWith('/vendors/applications/me')),
+    ).toBe(false);
+    expect(
+      screen.queryByRole('heading', { name: 'Vendor workspace access' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('opens and submits the reset form from a reset link in strict mode', async () => {
     window.history.replaceState(null, '', '/#reset=test-token');
     const fetchMock = vi

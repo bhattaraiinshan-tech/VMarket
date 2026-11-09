@@ -254,6 +254,39 @@ async def test_vendor_can_disable_only_selected_shop_promotion(orders_client: Or
             select(AuditLog).where(AuditLog.action == "vendor_promotion_status_updated")
         )
         assert event is not None and event.actor_id == ids["vendor1"]
+    _sign_in(client, "customer")
+    cart_item = await client.post(
+        "/api/v1/me/cart/items",
+        json={"product_id": str(ids["product1"]), "quantity": 1},
+    )
+    assert cart_item.status_code == 201
+    _sign_in(client, "vendor1")
+    async with factory() as session:
+        shop = await session.get(Shop, ids["shop1"])
+        assert shop is not None
+        shop.is_active = False
+        await session.commit()
+    inactive_shop_promotion = await client.post(
+        "/api/v1/vendor/promotions",
+        json={
+            "code": "INACTIVE10",
+            "title": "Inactive shop discount",
+            "discount_type": "percent",
+            "discount_value": "10",
+        },
+    )
+    assert inactive_shop_promotion.status_code == 409
+    assert inactive_shop_promotion.json()["error"]["code"] == "shop_inactive"
+    _sign_in(client, "customer")
+    checkout = await client.post(
+        "/api/v1/me/checkout",
+        json={
+            "address_id": str(ids["address"]),
+            "idempotency_key": "inactive-shop-checkout",
+        },
+    )
+    assert checkout.status_code == 409
+    assert checkout.json()["error"]["code"] == "shop_unavailable"
 
 
 async def test_vendor_fulfillment_contains_only_delivery_snapshot(

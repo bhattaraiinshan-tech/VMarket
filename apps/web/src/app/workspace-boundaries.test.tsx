@@ -178,6 +178,33 @@ describe('workspace-specific screens', () => {
     ).not.toBeInTheDocument();
   });
 
+  it.each(['vendor', 'admin'] as const)(
+    'does not show Customer profile data in %s workspace',
+    async (workspace) => {
+      select(workspace);
+      const fetchMock = vi
+        .spyOn(globalThis, 'fetch')
+        .mockImplementation(async () => Response.json([]));
+      render(<IdentityPortal />);
+
+      expect(
+        screen.queryByRole('heading', { name: 'Profile' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('heading', { name: 'Delivery addresses' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('heading', { name: 'Vendor workspace access' }),
+      ).not.toBeInTheDocument();
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      expect(
+        fetchMock.mock.calls.some(([input]) =>
+          /\/vendors\/applications|\/me\/addresses/.test(String(input)),
+        ),
+      ).toBe(false);
+    },
+  );
+
   it('recovers a committed registration after an email-delivery failure by resending verification', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

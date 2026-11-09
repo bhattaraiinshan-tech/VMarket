@@ -96,7 +96,7 @@ export default function IdentityPortal({
 }: {
   adminOnly?: boolean;
 }) {
-  const { user, workspace, shopId } = useWorkspace();
+  const { user, workspace } = useWorkspace();
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [sessions, setSessions] = useState<AuthSession[]>([]);
   const [applications, setApplications] = useState<VendorApplication[]>([]);
@@ -141,10 +141,10 @@ export default function IdentityPortal({
     const controller = new AbortController();
     const { signal } = controller;
     void Promise.all([
-      workspace === 'customer'
+      !adminOnly && workspace === 'customer'
         ? request<Address[]>('/me/addresses', { signal })
         : Promise.resolve([]),
-      workspace === 'customer'
+      !adminOnly && workspace === 'customer'
         ? request<VendorApplication[]>('/vendors/applications/me', { signal })
         : Promise.resolve([]),
       adminOnly
@@ -187,7 +187,7 @@ export default function IdentityPortal({
         }
       });
     return () => controller.abort();
-  }, [user, workspace, adminOnly]);
+  }, [adminOnly, user, workspace]);
 
   useEffect(() => {
     const hash = window.location.hash.slice(1);
@@ -279,19 +279,8 @@ export default function IdentityPortal({
         cause.code === 'email_delivery_unavailable'
       ) {
         setMode('login');
-        setPassword('');
         setError(
-          'Your account was created, but the verification email could not be delivered. Use Resend verification email below; do not register again.',
-        );
-      } else if (
-        mode === 'register' &&
-        cause instanceof ApiError &&
-        cause.status === 409
-      ) {
-        setMode('login');
-        setPassword('');
-        setError(
-          `${cause.message} Sign in if already verified, or use Resend verification email below.`,
+          'Your account was created, but the verification email could not be delivered. Resend verification email to continue.',
         );
       } else {
         setError(
@@ -522,12 +511,10 @@ export default function IdentityPortal({
       const url = URL.createObjectURL(blob);
       const download = document.createElement('a');
       download.href = url;
-      download.download = `vendors-market-${workspace}${shopId ? `-${shopId}` : ''}-data.json`;
+      download.download = 'vendors-market-account-data.json';
       download.click();
       URL.revokeObjectURL(url);
-      setMessage(
-        `Your ${workspace} workspace data export has been downloaded.`,
-      );
+      setMessage('Your personal data export has been downloaded.');
     });
   }
 
@@ -548,6 +535,14 @@ export default function IdentityPortal({
     });
   }
 
+  if (adminOnly && (workspace !== 'admin' || !user?.roles.includes('admin'))) {
+    return (
+      <main className="mx-auto max-w-4xl px-5 py-12 sm:px-8">
+        <p role="status">Select Admin workspace to continue.</p>
+      </main>
+    );
+  }
+
   if (user && mode !== 'reset') {
     const pendingApplication = applications.find(
       (application) => application.status === 'pending',
@@ -565,11 +560,11 @@ export default function IdentityPortal({
               Vendor&apos;s Market
             </p>
             <h1 className="mt-1 text-2xl font-bold tracking-tight">
-              Your account
+              {adminOnly ? 'Platform administration' : 'Your account'}
             </h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {workspace === 'vendor' && (
+            {!adminOnly && user.roles.includes('vendor') && (
               <Link
                 className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
                 href="/vendor"
@@ -577,7 +572,7 @@ export default function IdentityPortal({
                 Vendor catalogue
               </Link>
             )}
-            {workspace === 'admin' && (
+            {user.roles.includes('admin') && (
               <>
                 <Link
                   className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
@@ -620,7 +615,7 @@ export default function IdentityPortal({
           </p>
         )}
 
-        {!adminOnly && (
+        {!adminOnly && workspace === 'customer' && (
           <section className="mt-8 grid gap-6 lg:grid-cols-2">
             <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold">Profile</h2>
@@ -629,55 +624,43 @@ export default function IdentityPortal({
                 {user.email_verified ? 'Email verified' : 'Email not verified'}{' '}
                 | {user.roles.join(', ')}
               </p>
-              {workspace === 'customer' ? (
-                <form className="mt-5 space-y-4" onSubmit={updateProfile}>
-                  <label className="block text-sm font-medium">
-                    Full name
-                    <input
-                      autoComplete="name"
-                      className={inputClassName()}
-                      maxLength={120}
-                      onChange={(event) => setProfileName(event.target.value)}
-                      required
-                      value={profileName}
-                    />
-                  </label>
-                  <label className="block text-sm font-medium">
-                    Phone number
-                    <input
-                      autoComplete="tel"
-                      className={inputClassName()}
-                      maxLength={32}
-                      onChange={(event) => setProfilePhone(event.target.value)}
-                      value={profilePhone}
-                    />
-                  </label>
-                  <button
-                    className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
-                    disabled={busy || workspace !== 'customer'}
-                    type="submit"
-                  >
-                    Save profile
-                  </button>
-                </form>
-              ) : (
-                <p className="mt-4 text-sm">
-                  {workspace === 'vendor'
-                    ? `Business: ${user.vendor_profile?.business_name ?? ''}. Select Customer workspace to manage your customer profile.`
-                    : workspace === 'admin'
-                      ? 'Platform owner account. Customer and Vendor operations require their own workspaces.'
-                      : 'Select a workspace above to manage its profile.'}
-                </p>
-              )}
+              <form className="mt-5 space-y-4" onSubmit={updateProfile}>
+                <label className="block text-sm font-medium">
+                  Full name
+                  <input
+                    autoComplete="name"
+                    className={inputClassName()}
+                    maxLength={120}
+                    onChange={(event) => setProfileName(event.target.value)}
+                    required
+                    value={profileName}
+                  />
+                </label>
+                <label className="block text-sm font-medium">
+                  Phone number
+                  <input
+                    autoComplete="tel"
+                    className={inputClassName()}
+                    maxLength={32}
+                    onChange={(event) => setProfilePhone(event.target.value)}
+                    value={profilePhone}
+                  />
+                </label>
+                <button
+                  className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
+                  disabled={busy || workspace !== 'customer'}
+                  type="submit"
+                >
+                  Save profile
+                </button>
+              </form>
               <button
                 className="mt-4 text-sm font-medium text-emerald-800 underline underline-offset-2"
-                disabled={
-                  busy || !workspace || (workspace === 'vendor' && !shopId)
-                }
+                disabled={busy}
                 onClick={() => void exportAccountData()}
                 type="button"
               >
-                Download my {workspace ?? 'selected'} workspace data
+                Download my personal data
               </button>
               <form
                 className="mt-5 border-t border-slate-200 pt-4"
@@ -866,7 +849,7 @@ export default function IdentityPortal({
           </section>
         )}
 
-        {workspace === 'customer' && (
+        {!adminOnly && workspace === 'customer' && (
           <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold">Vendor workspace access</h2>
             {applications.map((application) => (

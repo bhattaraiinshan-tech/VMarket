@@ -4,6 +4,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly code?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -20,10 +21,11 @@ export async function requestApi<T>(
   const vendor = /^\/(vendor\/|trade(?:\/|$))/.test(pathname);
   const admin = pathname.startsWith('/admin/');
   const shared =
-    /^\/me\/(notifications|support-tickets|conversations|fraud-reports)(?:\/|$)/.test(
+    /^\/me\/(notifications|support-tickets|conversations|fraud-reports|export)(?:\/|$)/.test(
       pathname,
     );
   const customer =
+    /^\/vendors\/applications(?:\/|$)/.test(pathname) ||
     (pathname === '/me' && method === 'PATCH') ||
     (pathname.startsWith('/me/') &&
       !shared &&
@@ -49,9 +51,14 @@ export async function requestApi<T>(
   if (
     shared &&
     context.workspace === 'admin' &&
-    pathname.startsWith('/me/conversations')
+    /^\/me\/(conversations|support-tickets|fraud-reports)(?:\/|$)/.test(
+      pathname,
+    )
   ) {
-    throw new ApiError('Messages require Customer or Vendor workspace.', 403);
+    throw new ApiError(
+      'Personal messages, support and reports require Customer or Vendor workspace. Use the administration queues instead.',
+      403,
+    );
   }
   const shopBound =
     (vendor && pathname !== '/vendor/shops') ||
@@ -98,12 +105,21 @@ export async function requestApi<T>(
     }
     if (!response.ok) {
       let message = 'The request could not be completed.';
+      let code: string | undefined;
       if (
         typeof payload === 'object' &&
         payload !== null &&
         'error' in payload
       ) {
         const error = payload.error;
+        if (
+          typeof error === 'object' &&
+          error !== null &&
+          'code' in error &&
+          typeof error.code === 'string'
+        ) {
+          code = error.code;
+        }
         if (
           typeof error === 'object' &&
           error !== null &&
@@ -114,7 +130,7 @@ export async function requestApi<T>(
         }
       }
       if (response.status === 401) setWorkspaceUser(null);
-      throw new ApiError(message, response.status);
+      throw new ApiError(message, response.status, code);
     }
     if (
       (pathname === '/me' || pathname === '/auth/login') &&
@@ -291,6 +307,7 @@ export type FulfillmentOrder = {
   commission_rate_bps: number;
   commission_amount: string;
   tracking_number: string | null;
+  shipping_address: Record<string, string | null>;
   created_at: string;
   updated_at: string;
   items: OrderItem[];
@@ -408,6 +425,8 @@ export type Promotion = {
 };
 
 export type FraudReport = {
+  workspace: 'customer' | 'vendor';
+  shop_id: string | null;
   id: string;
   reporter_id: string;
   reporter_email?: string | null;

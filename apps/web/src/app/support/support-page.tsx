@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { FormEvent, useEffect, useState } from 'react';
 
 import { SupportTicket, requestApi } from '@/lib/api';
+import { useWorkspace } from '@/lib/workspace-context';
 
 export default function SupportPage({
   orderId,
@@ -12,6 +13,7 @@ export default function SupportPage({
   orderId: string;
   initialKind: 'support' | 'dispute';
 }) {
+  const { workspace } = useWorkspace();
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [kind, setKind] = useState(initialKind);
   const [subject, setSubject] = useState('');
@@ -23,6 +25,7 @@ export default function SupportPage({
   const [loadingTickets, setLoadingTickets] = useState(true);
 
   useEffect(() => {
+    if (workspace === 'admin') return;
     let active = true;
     void requestApi<SupportTicket[]>('/me/support-tickets')
       .then((items) => {
@@ -51,7 +54,7 @@ export default function SupportPage({
     return () => {
       active = false;
     };
-  }, []);
+  }, [workspace]);
 
   async function submitTicket(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -83,6 +86,21 @@ export default function SupportPage({
     }
   }
 
+  if (workspace === 'admin')
+    return (
+      <main className="mx-auto max-w-4xl px-5 py-8">
+        <h1 className="text-2xl font-bold">Administrator support</h1>
+        <p className="mt-3">
+          Personal support tickets require Customer or Vendor workspace.
+        </p>
+        <Link
+          className="mt-3 block text-emerald-800 underline"
+          href="/admin/communications"
+        >
+          Open platform support and moderation queue
+        </Link>
+      </main>
+    );
   return (
     <main className="mx-auto min-h-screen max-w-4xl px-5 py-8 sm:px-8">
       <header className="border-b border-slate-200 pb-5">

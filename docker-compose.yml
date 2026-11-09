@@ -40,7 +40,7 @@ services:
   mailpit:
     image: axllent/mailpit:v1.21.8
     ports:
-      - "${VMARKET_MAIL_PORT:-1025}:1025"
+      - "${VMARKET_MAILPIT_SMTP_PORT:-1025}:1025"
       - "${VMARKET_MAIL_UI_PORT:-8025}:8025"
 
 volumes:

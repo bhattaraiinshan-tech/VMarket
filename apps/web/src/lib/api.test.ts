@@ -23,6 +23,44 @@ afterEach(() => {
 });
 
 describe('requestApi operations context', () => {
+  it('blocks vendor applications outside Customer workspace and forwards export selectors', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({}));
+    vi.stubGlobal('fetch', fetchMock);
+    setWorkspaceUser(user);
+    selectWorkspace('vendor');
+    await expect(requestApi('/vendors/applications/me')).rejects.toThrow(
+      'Customer',
+    );
+    await expect(requestApi('/me/export')).rejects.toThrow('Select a shop');
+    expect(fetchMock).not.toHaveBeenCalled();
+    selectShop('shop-1', ['shop-1']);
+    await requestApi('/me/export');
+    const headers = new Headers(fetchMock.mock.calls[0][1].headers);
+    expect(headers.get('X-VMarket-Workspace')).toBe('vendor');
+    expect(headers.get('X-VMarket-Shop-Id')).toBe('shop-1');
+    selectWorkspace('customer');
+    await requestApi('/vendors/applications/me');
+    expect(
+      new Headers(fetchMock.mock.calls[1][1].headers).get(
+        'X-VMarket-Workspace',
+      ),
+    ).toBe('customer');
+  });
+
+  it('blocks owner personal support, messages and reports without issuing requests', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    setWorkspaceUser({ ...user, roles: [...user.roles, 'admin'] });
+    selectWorkspace('admin');
+    for (const path of [
+      '/me/support-tickets',
+      '/me/conversations',
+      '/me/fraud-reports',
+    ]) {
+      await expect(requestApi(path)).rejects.toThrow('Customer or Vendor');
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it('sends the explicitly selected vendor shop for promotion management', async () => {
     const fetchMock = vi.fn().mockResolvedValue(Response.json([]));
     vi.stubGlobal('fetch', fetchMock);
@@ -39,7 +77,9 @@ describe('requestApi operations context', () => {
   });
 
   it('keeps customer fraud reports in the selected customer workspace', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(Response.json({ id: 'report-1' }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(Response.json({ id: 'report-1' }));
     vi.stubGlobal('fetch', fetchMock);
     setWorkspaceUser(user);
     selectWorkspace('customer');

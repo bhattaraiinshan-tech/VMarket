@@ -6,7 +6,12 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { installTestWorkspace } from '@/test-workspace';
+import { installTestWorkspace, testUser } from '@/test-workspace';
+import {
+  selectShop,
+  selectWorkspace,
+  setWorkspaceUser,
+} from '@/lib/workspace-state';
 
 import TradeWorkspace from './trade-workspace';
 
@@ -50,6 +55,98 @@ afterEach(() => {
 
 describe('vendor trade workspace', () => {
   beforeEach(() => installTestWorkspace('vendor'));
+
+  function installOwnedTransferMock(showOwnedListing = false) {
+    setWorkspaceUser({
+      ...testUser,
+      owned_shop_ids: ['buyer-shop', 'second-shop'],
+    });
+    selectWorkspace('vendor');
+    selectShop('buyer-shop', ['buyer-shop', 'second-shop']);
+    return vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input, init) => {
+        const url = String(input);
+        if (url.endsWith('/vendor/shop')) return Response.json(shop);
+        if (url.includes('/vendor/products?'))
+          return Response.json({
+            items: [
+              {
+                id: 'source-product',
+                name: 'Source rice',
+                stock: 10,
+                category_id: 'grains',
+                status: 'approved',
+              },
+            ],
+          });
+        if (url.endsWith('/vendor/trade/transfer-destinations'))
+          return Response.json([
+            {
+              shop_id: 'second-shop',
+              shop_name: 'Second shop',
+              product_id: 'receiving-product',
+              product_name: 'Receiving rice',
+              category_id: 'grains',
+            },
+          ]);
+        if (url.endsWith('/trade/listings') && !url.includes('/vendor/'))
+          return Response.json(
+            showOwnedListing
+              ? [{ ...supplierListing, shop_id: 'second-shop' }]
+              : [],
+          );
+        if (url.endsWith('/trade/transfers') && init?.method === 'POST')
+          return Response.json({ id: 'transfer-1' }, { status: 201 });
+        return Response.json([]);
+      });
+  }
+
+  it('transfers to an owned-shop product that has no wholesale listing', async () => {
+    const fetchMock = installOwnedTransferMock();
+    render(<TradeWorkspace />);
+    fireEvent.change(    await screen.findByLabelText('Your approved product'), {
+      target: { value: 'source-product' },
+    });
+    fireEvent.change(
+      screen.getByLabelText('Destination shop and matching product'),
+      { target: { value: 'receiving-product' } },
+    );
+    fireEvent.change(screen.getByLabelText('Transfer quantity'), {
+      target: { value: '4' },
+    });
+    fireEvent.change(screen.getByLabelText('Transfer delivery terms'), {
+      target: { value: 'Collect from own shop' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Request transfer' }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('/trade/transfers'),
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            destination_shop_id: 'second-shop',
+            source_product_id: 'source-product',
+            destination_product_id: 'receiving-product',
+            quantity: 4,
+            delivery_terms: 'Collect from own shop',
+          }),
+        }),
+      ),
+    );
+  });
+
+  it('does not offer an RFQ for any owned shop, not only the selected shop', async () => {
+    installOwnedTransferMock(true);
+    render(<TradeWorkspace />);
+    await screen.findByRole('heading', { name: 'Basmati rice' });
+    expect(
+      screen.queryByRole('button', { name: 'Request quote' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/You cannot purchase from your own shops/),
+    ).toBeInTheDocument();
+  });
   it('finds suppliers and sends an RFQ for a wholesale listing', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
@@ -77,7 +174,8 @@ describe('vendor trade workspace', () => {
             url.endsWith('/trade/rfqs') ||
             url.endsWith('/trade/orders') ||
             url.endsWith('/trade/transfers') ||
-            url.endsWith('/trade/suppliers')
+            url.endsWith('/trade/suppliers') ||
+            url.endsWith('/vendor/trade/transfer-destinations')
           ) {
             return Response.json([]);
           }

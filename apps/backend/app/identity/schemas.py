@@ -92,6 +92,7 @@ class VendorProfileRead(BaseModel):
 
 
 class UserRead(BaseModel):
+    owned_shop_ids: list[UUID] = Field(default_factory=list)
     id: UUID
     email: EmailStr
     email_verified: bool
@@ -239,3 +240,51 @@ class AuditLogRead(BaseModel):
     target_id: str
     details: str | None
     created_at: datetime
+
+
+class ExportAccountRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    email: EmailStr
+    email_verified: bool
+    account_status: str
+    created_at: datetime
+
+
+class ExportShopRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    address: str | None
+    city: str
+    province: str
+    is_active: bool
+
+
+class CustomerExportRead(BaseModel):
+    workspace: Literal["customer"] = "customer"
+    shop_id: None = None
+    account: ExportAccountRead
+    profile: ProfileRead
+    addresses: list[AddressRead]
+    vendor_applications: list[VendorApplicationRead]
+
+
+class VendorExportRead(BaseModel):
+    workspace: Literal["vendor"] = "vendor"
+    shop_id: UUID
+    account: ExportAccountRead
+    vendor_profile: VendorProfileRead
+    shop: ExportShopRead
+
+
+class AdminExportRead(BaseModel):
+    workspace: Literal["admin"] = "admin"
+    shop_id: None = None
+    account: ExportAccountRead
+    owner: dict[str, UUID]
+
+
+WorkspaceExportRead = CustomerExportRead | VendorExportRead | AdminExportRead

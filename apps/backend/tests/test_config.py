@@ -60,3 +60,36 @@ def test_owner_identity_is_optional_but_validated_and_normalized() -> None:
     )
     with pytest.raises(ValidationError):
         Settings(_env_file=None, owner_email="not-an-email")
+
+
+def test_brevo_requires_private_api_key() -> None:
+    for password in ("", "   "):
+        with pytest.raises(ValidationError, match="Brevo requires"):
+            Settings(_env_file=None, mail_provider="brevo", mail_password=password)
+
+
+def test_staging_brevo_does_not_require_smtp_configuration() -> None:
+    settings = Settings(
+        _env_file=None,
+        environment="staging",
+        database_url="postgresql+asyncpg://market:strong-password@db.example.com:5432/market",
+        minio_endpoint="storage.example.com:9000",
+        minio_access_key="market-staging",
+        minio_secret_key="a-staging-secret-value",
+        minio_secure=True,
+        minio_public_url="https://media.example.com",
+        mail_provider="brevo",
+        mail_from="no-reply@example.com",
+        mail_password="private-test-key",
+        web_base_url="https://staging.example.com",
+        cors_origins=["https://staging.example.com"],
+    )
+    assert settings.mail_provider == "brevo"
+
+
+@pytest.mark.parametrize("sender", ["", " ", "no-reply@vendors-market.local"])
+def test_brevo_requires_sender(sender: str) -> None:
+    with pytest.raises(ValidationError, match="verified sender"):
+        Settings(
+            _env_file=None, mail_provider="brevo", mail_password="test-key", mail_from=sender
+        )

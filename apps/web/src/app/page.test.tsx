@@ -27,6 +27,13 @@ describe('home page', () => {
       screen.getByRole('button', { name: 'Create account' }),
     ).toBeInTheDocument();
     expect(screen.getByLabelText('Email')).toBeInTheDocument();
+    for (const path of ['/vendor', '/cart', '/orders', '/notifications']) {
+      expect(
+        screen
+          .getByRole('navigation', { name: 'Main navigation' })
+          .querySelector(`a[href="${path}"]`),
+      ).toBeNull();
+    }
   });
 
   it('shows the email verification requirement during registration', () => {

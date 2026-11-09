@@ -179,7 +179,9 @@ export default function AdminOperationsPage() {
           title: promoTitle,
           discount_type: promoType,
           discount_value: promoValue,
-          starts_at: promoStartsAt ? new Date(promoStartsAt).toISOString() : null,
+          starts_at: promoStartsAt
+            ? new Date(promoStartsAt).toISOString()
+            : null,
           ends_at: promoEndsAt ? new Date(promoEndsAt).toISOString() : null,
           max_redemptions: promoMaxRedemptions
             ? Number(promoMaxRedemptions)
@@ -243,8 +245,10 @@ export default function AdminOperationsPage() {
         </div>
         <nav className="flex flex-wrap gap-4 text-sm font-semibold text-emerald-800">
           <Link href="/admin/catalog">Catalogue and products</Link>
-          <Link href="/admin/communications">Reviews, tickets, and disputes</Link>
-          <Link href="/">Account and vendor verification</Link>
+          <Link href="/admin/communications">
+            Reviews, tickets, and disputes
+          </Link>
+          <Link href="/admin/accounts">Account and vendor verification</Link>
         </nav>
       </header>
 
@@ -272,7 +276,10 @@ export default function AdminOperationsPage() {
             ['Active vendors', dashboard.active_vendors],
             ['Pending verifications', dashboard.pending_vendor_applications],
             ['Products to review', dashboard.pending_products],
-            ['Orders / open', `${dashboard.orders_total} / ${dashboard.open_orders}`],
+            [
+              'Orders / open',
+              `${dashboard.orders_total} / ${dashboard.open_orders}`,
+            ],
             ['Open disputes', dashboard.open_disputes],
             ['Payments needing review', dashboard.pending_payments],
             ['Fraud investigations', dashboard.pending_fraud_reports],
@@ -417,9 +424,7 @@ export default function AdminOperationsPage() {
               <input
                 className={fieldClass}
                 min="1"
-                onChange={(event) =>
-                  setPromoMaxRedemptions(event.target.value)
-                }
+                onChange={(event) => setPromoMaxRedemptions(event.target.value)}
                 type="number"
                 value={promoMaxRedemptions}
               />
@@ -582,94 +587,101 @@ export default function AdminOperationsPage() {
                 Reported by {report.reporter_email ?? report.reporter_id} on{' '}
                 {new Date(report.created_at).toLocaleString()} · {report.status}
               </p>
+              <p className="mt-1 text-sm text-slate-600">
+                Workspace: {report.workspace}
+                {report.shop_id ? ` · Shop: ${report.shop_id}` : ''}
+              </p>
               {report.details && (
                 <p className="mt-2 whitespace-pre-wrap text-sm">
                   {report.details}
                 </p>
               )}
-              {report.status !== 'resolved' && report.status !== 'dismissed' && (
-                <form
-                  className="mt-3 flex flex-wrap gap-2"
-                  onSubmit={(event) => void updateReport(event, report)}
-                >
-                  <label className="sr-only" htmlFor={`notes-${report.id}`}>
-                    Investigation notes for report {report.id}
-                  </label>
-                  <input
-                    className="min-w-60 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                    id={`notes-${report.id}`}
-                    minLength={3}
-                    onChange={(event) =>
-                      setNotes((current) => ({
-                        ...current,
-                        [report.id]: event.target.value,
-                      }))
-                    }
-                    placeholder="Investigation notes"
-                    required
-                    value={notes[report.id] ?? report.investigation_notes ?? ''}
-                  />
-                  <button
-                    className="rounded-lg bg-emerald-800 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                    disabled={busy}
-                    type="submit"
+              {report.status !== 'resolved' &&
+                report.status !== 'dismissed' && (
+                  <form
+                    className="mt-3 flex flex-wrap gap-2"
+                    onSubmit={(event) => void updateReport(event, report)}
                   >
-                    Mark investigating
-                  </button>
-                  <button
-                    className="rounded-lg border border-slate-400 px-3 py-2 text-sm font-semibold disabled:opacity-50"
-                    disabled={busy}
-                    onClick={() =>
-                      void runAction(async () => {
-                        await requestApi<FraudReport>(
-                          `/admin/fraud-reports/${report.id}`,
-                          {
-                            method: 'PATCH',
-                            body: JSON.stringify({
-                              status: 'resolved',
-                              investigation_notes:
-                                notes[report.id] ||
-                                report.investigation_notes ||
-                                'Investigation completed.',
-                            }),
-                          },
-                        );
-                        await loadData();
-                        setMessage('Fraud report was resolved and audited.');
-                      })
-                    }
-                    type="button"
-                  >
-                    Resolve
-                  </button>
-                  <button
-                    className="rounded-lg border border-slate-400 px-3 py-2 text-sm font-semibold disabled:opacity-50"
-                    disabled={busy}
-                    onClick={() =>
-                      void runAction(async () => {
-                        await requestApi<FraudReport>(
-                          `/admin/fraud-reports/${report.id}`,
-                          {
-                            method: 'PATCH',
-                            body: JSON.stringify({
-                              status: 'dismissed',
-                              investigation_notes:
-                                notes[report.id] ||
-                                report.investigation_notes ||
-                                'Report reviewed and dismissed.',
-                            }),
-                          },
-                        );
-                        await loadData();
-                        setMessage('Fraud report was dismissed and audited.');
-                      })
-                    }
-                    type="button"
-                  >
-                    Dismiss
-                  </button>
-                </form>
-              )}
+                    <label className="sr-only" htmlFor={`notes-${report.id}`}>
+                      Investigation notes for report {report.id}
+                    </label>
+                    <input
+                      className="min-w-60 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                      id={`notes-${report.id}`}
+                      minLength={3}
+                      onChange={(event) =>
+                        setNotes((current) => ({
+                          ...current,
+                          [report.id]: event.target.value,
+                        }))
+                      }
+                      placeholder="Investigation notes"
+                      required
+                      value={
+                        notes[report.id] ?? report.investigation_notes ?? ''
+                      }
+                    />
+                    <button
+                      className="rounded-lg bg-emerald-800 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                      disabled={busy}
+                      type="submit"
+                    >
+                      Mark investigating
+                    </button>
+                    <button
+                      className="rounded-lg border border-slate-400 px-3 py-2 text-sm font-semibold disabled:opacity-50"
+                      disabled={busy}
+                      onClick={() =>
+                        void runAction(async () => {
+                          await requestApi<FraudReport>(
+                            `/admin/fraud-reports/${report.id}`,
+                            {
+                              method: 'PATCH',
+                              body: JSON.stringify({
+                                status: 'resolved',
+                                investigation_notes:
+                                  notes[report.id] ||
+                                  report.investigation_notes ||
+                                  'Investigation completed.',
+                              }),
+                            },
+                          );
+                          await loadData();
+                          setMessage('Fraud report was resolved and audited.');
+                        })
+                      }
+                      type="button"
+                    >
+                      Resolve
+                    </button>
+                    <button
+                      className="rounded-lg border border-slate-400 px-3 py-2 text-sm font-semibold disabled:opacity-50"
+                      disabled={busy}
+                      onClick={() =>
+                        void runAction(async () => {
+                          await requestApi<FraudReport>(
+                            `/admin/fraud-reports/${report.id}`,
+                            {
+                              method: 'PATCH',
+                              body: JSON.stringify({
+                                status: 'dismissed',
+                                investigation_notes:
+                                  notes[report.id] ||
+                                  report.investigation_notes ||
+                                  'Report reviewed and dismissed.',
+                              }),
+                            },
+                          );
+                          await loadData();
+                          setMessage('Fraud report was dismissed and audited.');
+                        })
+                      }
+                      type="button"
+                    >
+                      Dismiss
+                    </button>
+                  </form>
+                )}
             </li>
           ))}
           {dashboard && !reports.length && (
@@ -685,7 +697,8 @@ export default function AdminOperationsPage() {
         <ol className="mt-3 divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
           {audit.map((entry, index) => (
             <li className="p-3 text-sm" key={`${entry.action}-${index}`}>
-              <strong>{entry.action}</strong> · {entry.target_type} {entry.target_id}
+              <strong>{entry.action}</strong> · {entry.target_type}{' '}
+              {entry.target_id}
               <span className="block text-xs text-slate-600">
                 {entry.details ?? 'No additional details'} ·{' '}
                 {new Date(entry.created_at).toLocaleString()}

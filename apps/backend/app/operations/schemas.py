@@ -108,6 +108,8 @@ class FraudReportRead(BaseModel):
 
     id: UUID
     reporter_id: UUID
+    workspace: Literal["customer", "vendor"]
+    shop_id: UUID | None
     target_type: str
     target_id: UUID
     reason: str

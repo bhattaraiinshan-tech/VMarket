@@ -143,6 +143,9 @@ async def _order_read(session: AsyncSession, order: CustomerOrder) -> OrderRead:
 async def _fulfillment_read(
     session: AsyncSession, fulfillment: FulfillmentOrder
 ) -> FulfillmentOrderRead:
+    order = await session.get(CustomerOrder, fulfillment.order_id)
+    if order is None:
+        raise APIError(409, "order_unavailable", "The fulfillment's order is unavailable.")
     items = list(
         await session.scalars(
             select(OrderItem)
@@ -177,6 +180,18 @@ async def _fulfillment_read(
         commission_rate_bps=fulfillment.commission_rate_bps,
         commission_amount=fulfillment.commission_amount,
         tracking_number=fulfillment.tracking_number,
+        shipping_address={
+            key: order.shipping_address.get(key)
+            for key in (
+                "recipient_name",
+                "phone",
+                "province",
+                "city",
+                "area",
+                "street_address",
+                "postal_code",
+            )
+        },
         created_at=fulfillment.created_at,
         updated_at=fulfillment.updated_at,
         items=[OrderItemRead.model_validate(item) for item in items],

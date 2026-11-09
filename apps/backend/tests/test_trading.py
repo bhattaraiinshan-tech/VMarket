@@ -451,6 +451,91 @@ async def test_vendor_stock_transfer_requires_receiver_confirmation(
         assert transfer is not None and transfer.status == "received"
 
 
+async def test_owned_transfer_products_do_not_require_wholesale_listings(
+    trading_client: TradingClient,
+) -> None:
+    client, factory, ids = trading_client
+    async with factory() as session:
+        source_shop = await session.get(Shop, ids["buyer_shop"])
+        source = await session.get(Product, ids["buyer_product"])
+        assert source_shop is not None and source is not None
+        sibling = Shop(
+            owner_user_id=source_shop.owner_user_id,
+            slot=2,
+            name="Second shop",
+            slug="second-shop",
+            city="Kathmandu",
+            province="Bagmati",
+        )
+        inactive = Shop(
+            owner_user_id=source_shop.owner_user_id,
+            slot=3,
+            name="Inactive shop",
+            slug="inactive-shop",
+            city="Kathmandu",
+            province="Bagmati",
+            is_active=False,
+        )
+        session.add_all([sibling, inactive])
+        await session.flush()
+        destination = Product(
+            shop_id=sibling.id,
+            category_id=source.category_id,
+            name="Unlisted rice",
+            slug="unlisted-rice",
+            sku="UNLISTED-RICE",
+            description="Receiving stock",
+            price=Decimal("100"),
+            stock=0,
+            status="approved",
+        )
+        session.add(destination)
+        await session.commit()
+        sibling_id, product_id = sibling.id, destination.id
+    path = "/api/v1/vendor/trade/transfer-destinations"
+    items = (await client.get(path)).json()
+    assert [item["product_id"] for item in items] == [str(product_id)]
+    transfer = await client.post(
+        "/api/v1/trade/transfers",
+        json={
+            "destination_shop_id": str(sibling_id),
+            "source_product_id": str(ids["buyer_product"]),
+            "destination_product_id": str(product_id),
+            "quantity": 4,
+            "delivery_terms": "Own shops",
+        },
+    )
+    assert transfer.status_code == 201, transfer.text
+    transfer_id = transfer.json()["id"]
+    client.headers["X-VMarket-Shop-Id"] = str(sibling_id)
+    assert (
+        await client.post(
+            f"/api/v1/trade/transfers/{transfer_id}/status", json={"status": "approved"}
+        )
+    ).status_code == 200
+    _sign_in(client, "buyer")
+    assert (
+        await client.post(
+            f"/api/v1/trade/transfers/{transfer_id}/status", json={"status": "shipped"}
+        )
+    ).status_code == 200
+    client.headers["X-VMarket-Shop-Id"] = str(sibling_id)
+    assert (
+        await client.post(
+            f"/api/v1/trade/transfers/{transfer_id}/status", json={"status": "received"}
+        )
+    ).status_code == 200
+    async with factory() as session:
+        receiving = await session.get(Product, product_id)
+        assert receiving is not None and receiving.stock == 4
+    _sign_in(client, "seller")
+    assert (await client.get(path)).json() == []
+    client.headers["X-VMarket-Shop-Id"] = str(sibling_id)
+    assert (await client.get(path)).status_code == 404
+    client.headers.pop("X-VMarket-Shop-Id")
+    assert (await client.get(path)).status_code == 422
+
+
 @pytest.mark.asyncio
 async def test_same_owner_trade_is_blocked_but_shop_transfers_remain_scoped(
     trading_client: TradingClient,

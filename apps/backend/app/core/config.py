@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     minio_public_url: str = "http://localhost:9000"
     minio_public_bucket: str = "product-media"
     minio_private_bucket: str = "vendor-documents"
+    mail_provider: Literal["smtp", "brevo"] = "smtp"
     mail_host: str = "localhost"
     mail_port: int = 1025
     mail_username: str | None = None
@@ -158,6 +159,18 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def validate_mail_provider(self) -> "Settings":
+        if self.mail_provider == "brevo" and (
+            not self.mail_password or not self.mail_password.get_secret_value().strip()
+        ):
+            raise ValueError("Brevo requires mail_password to contain an API key")
+        if self.mail_provider == "brevo" and (
+            not self.mail_from.strip() or self.mail_from == "no-reply@vendors-market.local"
+        ):
+            raise ValueError("Brevo requires mail_from to contain a verified sender email")
+        return self
+
+    @model_validator(mode="after")
     def validate_deployment_settings(self) -> "Settings":
         if self.environment not in {"staging", "production"}:
             return self
@@ -191,9 +204,9 @@ class Settings(BaseSettings):
         if self.minio_secret_key.get_secret_value() == "vmarket-local-secret":
             raise ValueError("staging and production require a non-development MinIO secret key")
         mail_host = self.mail_host.lower()
-        if mail_host in {"localhost", "127.0.0.1", "::1"}:
+        if self.mail_provider == "smtp" and mail_host in {"localhost", "127.0.0.1", "::1"}:
             raise ValueError("staging and production require a remote email service")
-        if (
+        if self.mail_provider == "smtp" and (
             not self.mail_starttls
             or not self.mail_username
             or not self.mail_password

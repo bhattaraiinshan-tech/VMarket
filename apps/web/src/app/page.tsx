@@ -22,30 +22,6 @@ export default function HomePage() {
             >
               Marketplace
             </Link>
-            <Link
-              className="text-slate-700 hover:text-emerald-800"
-              href="/vendor"
-            >
-              Vendor workspace
-            </Link>
-            <Link
-              className="text-slate-700 hover:text-emerald-800"
-              href="/cart"
-            >
-              Cart
-            </Link>
-            <Link
-              className="text-slate-700 hover:text-emerald-800"
-              href="/orders"
-            >
-              Orders
-            </Link>
-            <Link
-              className="text-slate-700 hover:text-emerald-800"
-              href="/notifications"
-            >
-              Notifications
-            </Link>
           </div>
         </div>
       </nav>

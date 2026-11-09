@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { requestApi as request } from '@/lib/api';
+import { ApiError, requestApi as request } from '@/lib/api';
 import { useWorkspace } from '@/lib/workspace-context';
 import { browserStorageUrl } from '@/lib/network';
 import {
@@ -91,8 +91,12 @@ function inputClassName() {
   return 'mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100';
 }
 
-export default function IdentityPortal() {
-  const { user, workspace } = useWorkspace();
+export default function IdentityPortal({
+  adminOnly = false,
+}: {
+  adminOnly?: boolean;
+}) {
+  const { user, workspace, shopId } = useWorkspace();
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [sessions, setSessions] = useState<AuthSession[]>([]);
   const [applications, setApplications] = useState<VendorApplication[]>([]);
@@ -140,8 +144,12 @@ export default function IdentityPortal() {
       workspace === 'customer'
         ? request<Address[]>('/me/addresses', { signal })
         : Promise.resolve([]),
-      request<VendorApplication[]>('/vendors/applications/me', { signal }),
-      request<AuthSession[]>('/auth/sessions', { signal }),
+      workspace === 'customer'
+        ? request<VendorApplication[]>('/vendors/applications/me', { signal })
+        : Promise.resolve([]),
+      adminOnly
+        ? Promise.resolve([])
+        : request<AuthSession[]>('/auth/sessions', { signal }),
     ])
       .then(async ([savedAddresses, savedApplications, activeSessions]) => {
         if (signal.aborted) return;
@@ -179,11 +187,31 @@ export default function IdentityPortal() {
         }
       });
     return () => controller.abort();
-  }, [user, workspace]);
+  }, [user, workspace, adminOnly]);
 
   useEffect(() => {
     const hash = window.location.hash.slice(1);
     let resetTimeout: number | undefined;
+    function handleResetLink() {
+      const currentHash = window.location.hash.slice(1);
+      if (!currentHash.startsWith('reset=')) return;
+      const token = currentHash.slice('reset='.length);
+      window.clearTimeout(resetTimeout);
+      resetTimeout = window.setTimeout(() => {
+        if (window.location.hash.slice(1) !== currentHash) return;
+        window.history.replaceState(
+          null,
+          '',
+          window.location.pathname + window.location.search,
+        );
+        setError('');
+        setMessage('');
+        setNewPassword('');
+        setResetToken(token);
+        setMode('reset');
+      }, 0);
+    }
+
     if (hash.startsWith('verify=')) {
       const token = hash.slice('verify='.length);
       window.history.replaceState(null, '', window.location.pathname);
@@ -199,17 +227,12 @@ export default function IdentityPortal() {
               : 'Email verification failed.',
           ),
         );
-    } else if (hash.startsWith('reset=')) {
-      const token = hash.slice('reset='.length);
-      window.history.replaceState(null, '', window.location.pathname);
-      resetTimeout = window.setTimeout(() => {
-        setResetToken(token);
-        setMode('reset');
-      }, 0);
-    }
+    } else handleResetLink();
 
+    window.addEventListener('hashchange', handleResetLink);
     void request<UserProfile>('/me').catch(() => undefined);
     return () => {
+      window.removeEventListener('hashchange', handleResetLink);
       if (resetTimeout !== undefined) window.clearTimeout(resetTimeout);
     };
   }, []);
@@ -235,9 +258,12 @@ export default function IdentityPortal() {
             body: JSON.stringify({ token: resetToken, password: newPassword }),
           },
         );
+        setUser(null);
         setMessage(result.message);
         setMode('login');
         setPassword('');
+        setNewPassword('');
+        setResetToken('');
       } else {
         const account = await request<UserProfile>('/auth/login', {
           method: 'POST',
@@ -247,7 +273,31 @@ export default function IdentityPortal() {
         setMessage('');
       }
     } catch (cause: unknown) {
-      setError(cause instanceof Error ? cause.message : 'The request failed.');
+      if (
+        mode === 'register' &&
+        cause instanceof ApiError &&
+        cause.code === 'email_delivery_unavailable'
+      ) {
+        setMode('login');
+        setPassword('');
+        setError(
+          'Your account was created, but the verification email could not be delivered. Use Resend verification email below; do not register again.',
+        );
+      } else if (
+        mode === 'register' &&
+        cause instanceof ApiError &&
+        cause.status === 409
+      ) {
+        setMode('login');
+        setPassword('');
+        setError(
+          `${cause.message} Sign in if already verified, or use Resend verification email below.`,
+        );
+      } else {
+        setError(
+          cause instanceof Error ? cause.message : 'The request failed.',
+        );
+      }
     } finally {
       setBusy(false);
     }
@@ -472,10 +522,12 @@ export default function IdentityPortal() {
       const url = URL.createObjectURL(blob);
       const download = document.createElement('a');
       download.href = url;
-      download.download = 'vendors-market-account-data.json';
+      download.download = `vendors-market-${workspace}${shopId ? `-${shopId}` : ''}-data.json`;
       download.click();
       URL.revokeObjectURL(url);
-      setMessage('Your personal data export has been downloaded.');
+      setMessage(
+        `Your ${workspace} workspace data export has been downloaded.`,
+      );
     });
   }
 
@@ -496,7 +548,7 @@ export default function IdentityPortal() {
     });
   }
 
-  if (user) {
+  if (user && mode !== 'reset') {
     const pendingApplication = applications.find(
       (application) => application.status === 'pending',
     );
@@ -517,7 +569,7 @@ export default function IdentityPortal() {
             </h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {user.roles.includes('vendor') && (
+            {workspace === 'vendor' && (
               <Link
                 className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
                 href="/vendor"
@@ -525,7 +577,7 @@ export default function IdentityPortal() {
                 Vendor catalogue
               </Link>
             )}
-            {user.roles.includes('admin') && (
+            {workspace === 'admin' && (
               <>
                 <Link
                   className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
@@ -568,346 +620,367 @@ export default function IdentityPortal() {
           </p>
         )}
 
-        <section className="mt-8 grid gap-6 lg:grid-cols-2">
-          <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold">Profile</h2>
-            <p className="mt-1 text-sm text-slate-600">{user.email}</p>
-            <p className="mt-1 text-xs text-emerald-800">
-              {user.email_verified ? 'Email verified' : 'Email not verified'} |{' '}
-              {user.roles.join(', ')}
-            </p>
-            <form className="mt-5 space-y-4" onSubmit={updateProfile}>
-              <label className="block text-sm font-medium">
-                Full name
-                <input
-                  autoComplete="name"
-                  className={inputClassName()}
-                  maxLength={120}
-                  onChange={(event) => setProfileName(event.target.value)}
-                  required
-                  value={profileName}
-                />
-              </label>
-              <label className="block text-sm font-medium">
-                Phone number
-                <input
-                  autoComplete="tel"
-                  className={inputClassName()}
-                  maxLength={32}
-                  onChange={(event) => setProfilePhone(event.target.value)}
-                  value={profilePhone}
-                />
-              </label>
-              <button
-                className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
-                disabled={busy || workspace !== 'customer'}
-                type="submit"
-              >
-                Save profile
-              </button>
-            </form>
-            <button
-              className="mt-4 text-sm font-medium text-emerald-800 underline underline-offset-2"
-              disabled={busy}
-              onClick={() => void exportAccountData()}
-              type="button"
-            >
-              Download my personal data
-            </button>
-            <form
-              className="mt-5 border-t border-slate-200 pt-4"
-              onSubmit={deactivateAccount}
-            >
-              <label className="block text-sm font-medium">
-                Deactivate account
-                <input
-                  autoComplete="current-password"
-                  className={inputClassName()}
-                  onChange={(event) =>
-                    setDeactivationPassword(event.target.value)
-                  }
-                  placeholder="Confirm your password"
-                  required
-                  type="password"
-                  value={deactivationPassword}
-                />
-              </label>
-              <button
-                className="mt-3 rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-800 hover:bg-red-50 disabled:opacity-60"
-                disabled={busy || user.roles.includes('admin')}
-                type="submit"
-              >
-                Deactivate account
-              </button>
-            </form>
-          </article>
-
-          {workspace === 'customer' && (
+        {!adminOnly && (
+          <section className="mt-8 grid gap-6 lg:grid-cols-2">
             <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="text-lg font-semibold">Delivery addresses</h2>
-              {addresses.length > 0 ? (
-                <ul className="mt-3 space-y-2">
-                  {addresses.map((address) => (
-                    <li
-                      className="rounded-lg bg-slate-50 p-3 text-sm"
-                      key={address.id}
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div>
-                          <span className="font-semibold">
-                            {address.label}
-                            {address.is_default ? ' - Default' : ''}
-                          </span>
-                          <p className="mt-1 text-slate-600">
-                            {address.recipient_name}, {address.street_address},{' '}
-                            {address.city}, {address.province}
-                          </p>
-                        </div>
-                        <div className="flex gap-3">
-                          <button
-                            className="font-medium text-emerald-800 underline"
-                            disabled={busy}
-                            onClick={() => editAddress(address)}
-                            type="button"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            className="font-medium text-red-800 underline"
-                            disabled={busy}
-                            onClick={() => void removeAddress(address)}
-                            type="button"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+              <h2 className="text-lg font-semibold">Profile</h2>
+              <p className="mt-1 text-sm text-slate-600">{user.email}</p>
+              <p className="mt-1 text-xs text-emerald-800">
+                {user.email_verified ? 'Email verified' : 'Email not verified'}{' '}
+                | {user.roles.join(', ')}
+              </p>
+              {workspace === 'customer' ? (
+                <form className="mt-5 space-y-4" onSubmit={updateProfile}>
+                  <label className="block text-sm font-medium">
+                    Full name
+                    <input
+                      autoComplete="name"
+                      className={inputClassName()}
+                      maxLength={120}
+                      onChange={(event) => setProfileName(event.target.value)}
+                      required
+                      value={profileName}
+                    />
+                  </label>
+                  <label className="block text-sm font-medium">
+                    Phone number
+                    <input
+                      autoComplete="tel"
+                      className={inputClassName()}
+                      maxLength={32}
+                      onChange={(event) => setProfilePhone(event.target.value)}
+                      value={profilePhone}
+                    />
+                  </label>
+                  <button
+                    className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
+                    disabled={busy || workspace !== 'customer'}
+                    type="submit"
+                  >
+                    Save profile
+                  </button>
+                </form>
               ) : (
-                <p className="mt-2 text-sm text-slate-600">
-                  Add an address to make future checkout faster.
+                <p className="mt-4 text-sm">
+                  {workspace === 'vendor'
+                    ? `Business: ${user.vendor_profile?.business_name ?? ''}. Select Customer workspace to manage your customer profile.`
+                    : workspace === 'admin'
+                      ? 'Platform owner account. Customer and Vendor operations require their own workspaces.'
+                      : 'Select a workspace above to manage its profile.'}
                 </p>
               )}
-              <form
-                className="mt-5 grid gap-3 sm:grid-cols-2"
-                onSubmit={addAddress}
+              <button
+                className="mt-4 text-sm font-medium text-emerald-800 underline underline-offset-2"
+                disabled={
+                  busy || !workspace || (workspace === 'vendor' && !shopId)
+                }
+                onClick={() => void exportAccountData()}
+                type="button"
               >
-                {(
-                  [
-                    ['label', 'Label'],
-                    ['recipient_name', 'Recipient name'],
-                    ['phone', 'Phone'],
-                    ['province', 'Province'],
-                    ['city', 'City / municipality'],
-                    ['area', 'Area'],
-                    ['street_address', 'Street address'],
-                    ['postal_code', 'Postal code'],
-                  ] as const
-                ).map(([field, label]) => (
-                  <label className="text-sm font-medium" key={field}>
-                    {label}
+                Download my {workspace ?? 'selected'} workspace data
+              </button>
+              <form
+                className="mt-5 border-t border-slate-200 pt-4"
+                onSubmit={deactivateAccount}
+              >
+                <label className="block text-sm font-medium">
+                  Deactivate account
+                  <input
+                    autoComplete="current-password"
+                    className={inputClassName()}
+                    onChange={(event) =>
+                      setDeactivationPassword(event.target.value)
+                    }
+                    placeholder="Confirm your password"
+                    required
+                    type="password"
+                    value={deactivationPassword}
+                  />
+                </label>
+                <button
+                  className="mt-3 rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-800 hover:bg-red-50 disabled:opacity-60"
+                  disabled={busy || user.roles.includes('admin')}
+                  type="submit"
+                >
+                  Deactivate account
+                </button>
+              </form>
+            </article>
+
+            {workspace === 'customer' && (
+              <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-semibold">Delivery addresses</h2>
+                {addresses.length > 0 ? (
+                  <ul className="mt-3 space-y-2">
+                    {addresses.map((address) => (
+                      <li
+                        className="rounded-lg bg-slate-50 p-3 text-sm"
+                        key={address.id}
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <span className="font-semibold">
+                              {address.label}
+                              {address.is_default ? ' - Default' : ''}
+                            </span>
+                            <p className="mt-1 text-slate-600">
+                              {address.recipient_name}, {address.street_address}
+                              , {address.city}, {address.province}
+                            </p>
+                          </div>
+                          <div className="flex gap-3">
+                            <button
+                              className="font-medium text-emerald-800 underline"
+                              disabled={busy}
+                              onClick={() => editAddress(address)}
+                              type="button"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              className="font-medium text-red-800 underline"
+                              disabled={busy}
+                              onClick={() => void removeAddress(address)}
+                              type="button"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-sm text-slate-600">
+                    Add an address to make future checkout faster.
+                  </p>
+                )}
+                <form
+                  className="mt-5 grid gap-3 sm:grid-cols-2"
+                  onSubmit={addAddress}
+                >
+                  {(
+                    [
+                      ['label', 'Label'],
+                      ['recipient_name', 'Recipient name'],
+                      ['phone', 'Phone'],
+                      ['province', 'Province'],
+                      ['city', 'City / municipality'],
+                      ['area', 'Area'],
+                      ['street_address', 'Street address'],
+                      ['postal_code', 'Postal code'],
+                    ] as const
+                  ).map(([field, label]) => (
+                    <label className="text-sm font-medium" key={field}>
+                      {label}
+                      <input
+                        className={inputClassName()}
+                        onChange={(event) =>
+                          setAddressDraft((current) => ({
+                            ...current,
+                            [field]: event.target.value,
+                          }))
+                        }
+                        required={field !== 'area' && field !== 'postal_code'}
+                        value={addressDraft[field]}
+                      />
+                    </label>
+                  ))}
+                  <label className="flex items-center gap-2 text-sm sm:col-span-2">
                     <input
-                      className={inputClassName()}
+                      checked={addressDraft.is_default}
                       onChange={(event) =>
                         setAddressDraft((current) => ({
                           ...current,
-                          [field]: event.target.value,
+                          is_default: event.target.checked,
                         }))
                       }
-                      required={field !== 'area' && field !== 'postal_code'}
-                      value={addressDraft[field]}
+                      type="checkbox"
                     />
+                    Make this my default address
                   </label>
+                  <button
+                    className="w-fit rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60 sm:col-span-2"
+                    disabled={busy}
+                    type="submit"
+                  >
+                    {editingAddressId ? 'Save address' : 'Add address'}
+                  </button>
+                  {editingAddressId && (
+                    <button
+                      className="w-fit rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50 sm:col-span-2"
+                      disabled={busy}
+                      onClick={() => {
+                        setEditingAddressId(null);
+                        setAddressDraft(emptyAddress);
+                      }}
+                      type="button"
+                    >
+                      Cancel editing
+                    </button>
+                  )}
+                </form>
+              </article>
+            )}
+          </section>
+        )}
+
+        {!adminOnly && (
+          <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold">Signed-in sessions</h2>
+            {sessions.length === 0 ? (
+              <p className="mt-2 text-sm text-slate-600">
+                No active sessions were found.
+              </p>
+            ) : (
+              <ul className="mt-3 space-y-3">
+                {sessions.map((authSession) => (
+                  <li
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 p-3 text-sm"
+                    key={authSession.id}
+                  >
+                    <div>
+                      <p className="font-semibold">
+                        {authSession.user_agent || 'Unknown device'}
+                        {authSession.current ? ' - This device' : ''}
+                      </p>
+                      <p className="mt-1 text-slate-600">
+                        Signed in{' '}
+                        {new Date(authSession.created_at).toLocaleString()} |
+                        Last active{' '}
+                        {new Date(authSession.last_seen_at).toLocaleString()}
+                      </p>
+                    </div>
+                    <button
+                      className="font-medium text-red-800 underline"
+                      disabled={busy}
+                      onClick={() => void revokeSession(authSession)}
+                      type="button"
+                    >
+                      {authSession.current ? 'Sign out' : 'Revoke session'}
+                    </button>
+                  </li>
                 ))}
-                <label className="flex items-center gap-2 text-sm sm:col-span-2">
+              </ul>
+            )}
+          </section>
+        )}
+
+        {workspace === 'customer' && (
+          <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold">Vendor workspace access</h2>
+            {applications.map((application) => (
+              <p className="mt-2 text-sm text-slate-700" key={application.id}>
+                {application.business_name}:{' '}
+                <strong>{application.status}</strong>
+                {application.review_notes
+                  ? ` - ${application.review_notes}`
+                  : ''}
+              </p>
+            ))}
+            {!user.vendor_profile && !hasVendorApplication && (
+              <form
+                className="mt-5 grid gap-4 sm:grid-cols-2"
+                onSubmit={applyAsVendor}
+              >
+                <label className="text-sm font-medium">
+                  Business name
                   <input
-                    checked={addressDraft.is_default}
-                    onChange={(event) =>
-                      setAddressDraft((current) => ({
-                        ...current,
-                        is_default: event.target.checked,
-                      }))
-                    }
-                    type="checkbox"
+                    className={inputClassName()}
+                    onChange={(event) => setBusinessName(event.target.value)}
+                    required
+                    value={businessName}
                   />
-                  Make this my default address
+                </label>
+                <label className="text-sm font-medium">
+                  Business type
+                  <input
+                    className={inputClassName()}
+                    onChange={(event) => setBusinessType(event.target.value)}
+                    placeholder="Retail, wholesale, supplier..."
+                    required
+                    value={businessType}
+                  />
+                </label>
+                <label className="text-sm font-medium">
+                  Registration number
+                  <input
+                    className={inputClassName()}
+                    onChange={(event) =>
+                      setRegistrationNumber(event.target.value)
+                    }
+                    value={registrationNumber}
+                  />
+                </label>
+                <label className="text-sm font-medium">
+                  Business address
+                  <input
+                    className={inputClassName()}
+                    onChange={(event) => setBusinessAddress(event.target.value)}
+                    required
+                    value={businessAddress}
+                  />
                 </label>
                 <button
                   className="w-fit rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60 sm:col-span-2"
                   disabled={busy}
                   type="submit"
                 >
-                  {editingAddressId ? 'Save address' : 'Add address'}
+                  Submit vendor application
                 </button>
-                {editingAddressId && (
-                  <button
-                    className="w-fit rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50 sm:col-span-2"
-                    disabled={busy}
-                    onClick={() => {
-                      setEditingAddressId(null);
-                      setAddressDraft(emptyAddress);
-                    }}
-                    type="button"
-                  >
-                    Cancel editing
-                  </button>
-                )}
               </form>
-            </article>
-          )}
-        </section>
-
-        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">Signed-in sessions</h2>
-          {sessions.length === 0 ? (
-            <p className="mt-2 text-sm text-slate-600">
-              No active sessions were found.
-            </p>
-          ) : (
-            <ul className="mt-3 space-y-3">
-              {sessions.map((authSession) => (
-                <li
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 p-3 text-sm"
-                  key={authSession.id}
-                >
-                  <div>
-                    <p className="font-semibold">
-                      {authSession.user_agent || 'Unknown device'}
-                      {authSession.current ? ' - This device' : ''}
-                    </p>
-                    <p className="mt-1 text-slate-600">
-                      Signed in{' '}
-                      {new Date(authSession.created_at).toLocaleString()} | Last
-                      active{' '}
-                      {new Date(authSession.last_seen_at).toLocaleString()}
-                    </p>
-                  </div>
-                  <button
-                    className="font-medium text-red-800 underline"
-                    disabled={busy}
-                    onClick={() => void revokeSession(authSession)}
-                    type="button"
+            )}
+            {pendingApplication && (
+              <form
+                className="mt-5 flex flex-wrap items-end gap-3 border-t border-slate-200 pt-5"
+                onSubmit={uploadDocument}
+              >
+                <label className="text-sm font-medium">
+                  Document type
+                  <select
+                    className={inputClassName()}
+                    onChange={(event) => setDocumentType(event.target.value)}
+                    value={documentType}
                   >
-                    {authSession.current ? 'Sign out' : 'Revoke session'}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">Vendor workspace access</h2>
-          {applications.map((application) => (
-            <p className="mt-2 text-sm text-slate-700" key={application.id}>
-              {application.business_name}: <strong>{application.status}</strong>
-              {application.review_notes ? ` - ${application.review_notes}` : ''}
-            </p>
-          ))}
-          {!user.vendor_profile && !hasVendorApplication && (
-            <form
-              className="mt-5 grid gap-4 sm:grid-cols-2"
-              onSubmit={applyAsVendor}
-            >
-              <label className="text-sm font-medium">
-                Business name
-                <input
-                  className={inputClassName()}
-                  onChange={(event) => setBusinessName(event.target.value)}
-                  required
-                  value={businessName}
-                />
-              </label>
-              <label className="text-sm font-medium">
-                Business type
-                <input
-                  className={inputClassName()}
-                  onChange={(event) => setBusinessType(event.target.value)}
-                  placeholder="Retail, wholesale, supplier..."
-                  required
-                  value={businessType}
-                />
-              </label>
-              <label className="text-sm font-medium">
-                Registration number
-                <input
-                  className={inputClassName()}
-                  onChange={(event) =>
-                    setRegistrationNumber(event.target.value)
-                  }
-                  value={registrationNumber}
-                />
-              </label>
-              <label className="text-sm font-medium">
-                Business address
-                <input
-                  className={inputClassName()}
-                  onChange={(event) => setBusinessAddress(event.target.value)}
-                  required
-                  value={businessAddress}
-                />
-              </label>
-              <button
-                className="w-fit rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60 sm:col-span-2"
-                disabled={busy}
-                type="submit"
-              >
-                Submit vendor application
-              </button>
-            </form>
-          )}
-          {pendingApplication && (
-            <form
-              className="mt-5 flex flex-wrap items-end gap-3 border-t border-slate-200 pt-5"
-              onSubmit={uploadDocument}
-            >
-              <label className="text-sm font-medium">
-                Document type
-                <select
-                  className={inputClassName()}
-                  onChange={(event) => setDocumentType(event.target.value)}
-                  value={documentType}
+                    <option value="business_registration">
+                      Business registration
+                    </option>
+                    <option value="pan_vat">PAN / VAT</option>
+                    <option value="citizenship">Citizenship</option>
+                  </select>
+                </label>
+                <label className="text-sm font-medium">
+                  Private document (PDF, PNG, JPEG; max 10 MB)
+                  <input
+                    accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+                    className="mt-1 block w-full text-sm"
+                    onChange={(event) =>
+                      setDocumentFile(event.target.files?.[0] ?? null)
+                    }
+                    required
+                    type="file"
+                  />
+                </label>
+                <button
+                  className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-60"
+                  disabled={busy || !documentFile}
+                  type="submit"
                 >
-                  <option value="business_registration">
-                    Business registration
-                  </option>
-                  <option value="pan_vat">PAN / VAT</option>
-                  <option value="citizenship">Citizenship</option>
-                </select>
-              </label>
-              <label className="text-sm font-medium">
-                Private document (PDF, PNG, JPEG; max 10 MB)
-                <input
-                  accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
-                  className="mt-1 block w-full text-sm"
-                  onChange={(event) =>
-                    setDocumentFile(event.target.files?.[0] ?? null)
-                  }
-                  required
-                  type="file"
-                />
-              </label>
-              <button
-                className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-60"
-                disabled={busy || !documentFile}
-                type="submit"
-              >
-                Upload securely
-              </button>
-            </form>
-          )}
-          {documents.length > 0 && (
-            <ul className="mt-3 text-sm text-slate-600">
-              {documents.map((document) => (
-                <li key={document.id}>
-                  {document.document_type}: {document.original_filename}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+                  Upload securely
+                </button>
+              </form>
+            )}
+            {documents.length > 0 && (
+              <ul className="mt-3 text-sm text-slate-600">
+                {documents.map((document) => (
+                  <li key={document.id}>
+                    {document.document_type}: {document.original_filename}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
 
         {workspace === 'admin' && user.roles.includes('admin') && (
           <div className="mt-6 space-y-6">

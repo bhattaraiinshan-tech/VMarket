@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { browserStorageUrl } from '@/lib/network';
+import { useWorkspace, useWorkspaceShops } from '@/lib/workspace-context';
 import {
   ChangeEvent,
   FormEvent,
@@ -31,14 +32,28 @@ type TradeWorkspaceData = {
   orders: TradePurchaseOrder[];
   transfers: TradeStockTransfer[];
   suppliers: TradeSupplier[];
+  ownedDestinations: TransferDestination[];
 };
 
+type TransferDestination = {
+  shop_id: string;
+  shop_name: string;
+  product_id: string;
+  product_name: string;
+  category_id: string;
+};
 const fieldClass =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950';
 const buttonClass =
   'rounded-lg bg-emerald-800 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50';
 
 export default function TradeWorkspace() {
+  const { user } = useWorkspace();
+  const { shops } = useWorkspaceShops();
+  const ownedShopIds = new Set([
+    ...(user?.owned_shop_ids ?? []),
+    ...shops.map((shop) => shop.id),
+  ]);
   const [data, setData] = useState<TradeWorkspaceData | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -55,32 +70,35 @@ export default function TradeWorkspace() {
   const [quoteForms, setQuoteForms] = useState<
     Record<string, { unit_price: string; delivery_terms: string; note: string }>
   >({});
-  const [rfqQuantities, setRfqQuantities] = useState<Record<string, string>>({});
+  const [rfqQuantities, setRfqQuantities] = useState<Record<string, string>>(
+    {},
+  );
   const [reviewForms, setReviewForms] = useState<
     Record<string, { rating: string; body: string }>
   >({});
   const [transferForm, setTransferForm] = useState({
     source_product_id: '',
-    destination_listing_id: '',
+    destination_product_id: '',
     quantity: '1',
     delivery_terms: '',
   });
 
-  const loadWorkspace = useCallback(async (search: string): Promise<TradeWorkspaceData> => {
-    const listingPath = search.trim()
-      ? `/trade/listings?q=${encodeURIComponent(search.trim())}`
-      : '/trade/listings';
-    const [
-      shop,
-      products,
-      listings,
-      myListings,
-      rfqs,
-      orders,
-      transfers,
-      suppliers,
-    ] =
-      await Promise.all([
+  const loadWorkspace = useCallback(
+    async (search: string): Promise<TradeWorkspaceData> => {
+      const listingPath = search.trim()
+        ? `/trade/listings?q=${encodeURIComponent(search.trim())}`
+        : '/trade/listings';
+      const [
+        shop,
+        products,
+        listings,
+        myListings,
+        rfqs,
+        orders,
+        transfers,
+        suppliers,
+        ownedDestinations,
+      ] = await Promise.all([
         requestApi<Shop>('/vendor/shop'),
         requestApi<ProductPage>('/vendor/products?page=1&page_size=100'),
         requestApi<WholesaleListing[]>(listingPath),
@@ -93,18 +111,24 @@ export default function TradeWorkspace() {
             ? `/trade/suppliers?q=${encodeURIComponent(search.trim())}`
             : '/trade/suppliers',
         ),
+        requestApi<TransferDestination[]>(
+          '/vendor/trade/transfer-destinations',
+        ),
       ]);
-    return {
-      shop,
-      products: products.items,
-      listings,
-      myListings,
-      rfqs,
-      orders,
-      transfers,
-      suppliers,
-    };
-  }, []);
+      return {
+        shop,
+        products: products.items,
+        listings,
+        myListings,
+        rfqs,
+        orders,
+        transfers,
+        suppliers,
+        ownedDestinations,
+      };
+    },
+    [],
+  );
 
   useEffect(() => {
     let active = true;
@@ -207,7 +231,9 @@ export default function TradeWorkspace() {
         method: 'POST',
         body: JSON.stringify({
           listing_id: listing.id,
-          quantity: Number(rfqQuantities[listing.id] ?? listing.minimum_order_quantity),
+          quantity: Number(
+            rfqQuantities[listing.id] ?? listing.minimum_order_quantity,
+          ),
           delivery_terms: String(formData.get('delivery_terms') ?? ''),
           message: String(formData.get('message') ?? ''),
         }),
@@ -237,13 +263,10 @@ export default function TradeWorkspace() {
 
   async function updateOrder(order: TradePurchaseOrder, status: string) {
     await perform(async () => {
-      await requestApi<TradePurchaseOrder>(
-        `/trade/orders/${order.id}/status`,
-        {
-          method: 'POST',
-          body: JSON.stringify({ status }),
-        },
-      );
+      await requestApi<TradePurchaseOrder>(`/trade/orders/${order.id}/status`, {
+        method: 'POST',
+        body: JSON.stringify({ status }),
+      });
     }, `Purchase order marked ${status}.`);
   }
 
@@ -261,11 +284,11 @@ export default function TradeWorkspace() {
 
   async function createTransfer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const destination = data?.listings.find(
-      (listing) => listing.id === transferForm.destination_listing_id,
+    const destination = destinations.find(
+      (item) => item.product_id === transferForm.destination_product_id,
     );
     if (!destination) {
-      setError('Choose an active destination product listing.');
+      setError('Choose a receiving product in an active destination shop.');
       return;
     }
     await perform(async () => {
@@ -322,10 +345,14 @@ export default function TradeWorkspace() {
   async function openDocument(documentId: string) {
     setError('');
     try {
-      const response = await requestApi<{ url: string; expires_in_seconds: number }>(
-        `/trade/documents/${documentId}/url`,
-      );
-      setDocumentUrls((current) => ({ ...current, [documentId]: browserStorageUrl(response.url) }));
+      const response = await requestApi<{
+        url: string;
+        expires_in_seconds: number;
+      }>(`/trade/documents/${documentId}/url`);
+      setDocumentUrls((current) => ({
+        ...current,
+        [documentId]: browserStorageUrl(response.url),
+      }));
     } catch (cause: unknown) {
       setError(
         cause instanceof Error
@@ -363,27 +390,44 @@ export default function TradeWorkspace() {
     );
   }
 
-  const products = data.products.filter((product) => product.status === 'approved');
+  const products = data.products.filter(
+    (product) => product.status === 'approved',
+  );
   const activeListingProductIds = new Set(
-    data.myListings.filter((listing) => listing.is_active).map((listing) => listing.product_id),
+    data.myListings
+      .filter((listing) => listing.is_active)
+      .map((listing) => listing.product_id),
   );
   const listableProducts = products.filter(
     (product) => !activeListingProductIds.has(product.id),
   );
   const myRfqs = data.rfqs.filter(
-    (rfq) => rfq.buyer_shop_id === data.shop.id || rfq.seller_shop_id === data.shop.id,
+    (rfq) =>
+      rfq.buyer_shop_id === data.shop.id || rfq.seller_shop_id === data.shop.id,
   );
   const myOrders = data.orders.filter(
     (order) =>
-      order.buyer_shop_id === data.shop.id || order.seller_shop_id === data.shop.id,
+      order.buyer_shop_id === data.shop.id ||
+      order.seller_shop_id === data.shop.id,
   );
   const myTransfers = data.transfers.filter(
     (transfer) =>
       transfer.source_shop_id === data.shop.id ||
       transfer.destination_shop_id === data.shop.id,
   );
-  const destinations = data.listings.filter(
-    (listing) => listing.shop_id !== data.shop.id,
+  const source = products.find(
+    (product) => product.id === transferForm.source_product_id,
+  );
+  const destinations = [
+    ...data.ownedDestinations.filter(
+      (item) => !source || item.category_id === source.category_id,
+    ),
+    ...data.listings.filter((listing) => !ownedShopIds.has(listing.shop_id)),
+  ].filter(
+    (item, index, items) =>
+      item.shop_id !== data.shop.id &&
+      items.findIndex((other) => other.product_id === item.product_id) ===
+        index,
   );
 
   return (
@@ -421,7 +465,10 @@ export default function TradeWorkspace() {
         </button>
       </header>
       {error && (
-        <p className="mt-5 rounded-lg bg-red-50 p-4 text-sm text-red-800" role="alert">
+        <p
+          className="mt-5 rounded-lg bg-red-50 p-4 text-sm text-red-800"
+          role="alert"
+        >
           {error}
         </p>
       )}
@@ -439,7 +486,9 @@ export default function TradeWorkspace() {
           className="space-y-3 rounded-xl border border-slate-200 bg-white p-5"
           onSubmit={(event) => void createListing(event)}
         >
-          <h2 className="text-xl font-bold text-slate-950">Publish wholesale offer</h2>
+          <h2 className="text-xl font-bold text-slate-950">
+            Publish wholesale offer
+          </h2>
           <label className="block text-sm font-semibold text-slate-700">
             Approved product
             <select
@@ -532,10 +581,14 @@ export default function TradeWorkspace() {
                     onChange={(event) =>
                       setListingForm((current) => ({
                         ...current,
-                        price_tiers: current.price_tiers.map((item, itemIndex) =>
-                          itemIndex === index
-                            ? { ...item, minimum_quantity: event.target.value }
-                            : item,
+                        price_tiers: current.price_tiers.map(
+                          (item, itemIndex) =>
+                            itemIndex === index
+                              ? {
+                                  ...item,
+                                  minimum_quantity: event.target.value,
+                                }
+                              : item,
                         ),
                       }))
                     }
@@ -552,10 +605,11 @@ export default function TradeWorkspace() {
                     onChange={(event) =>
                       setListingForm((current) => ({
                         ...current,
-                        price_tiers: current.price_tiers.map((item, itemIndex) =>
-                          itemIndex === index
-                            ? { ...item, unit_price: event.target.value }
-                            : item,
+                        price_tiers: current.price_tiers.map(
+                          (item, itemIndex) =>
+                            itemIndex === index
+                              ? { ...item, unit_price: event.target.value }
+                              : item,
                         ),
                       }))
                     }
@@ -611,7 +665,9 @@ export default function TradeWorkspace() {
           className="space-y-3 rounded-xl border border-slate-200 bg-white p-5"
           onSubmit={(event) => void createTransfer(event)}
         >
-          <h2 className="text-xl font-bold text-slate-950">Request a stock transfer</h2>
+          <h2 className="text-xl font-bold text-slate-950">
+            Request a stock transfer
+          </h2>
           <label className="block text-sm font-semibold text-slate-700">
             Your approved product
             <select
@@ -620,6 +676,7 @@ export default function TradeWorkspace() {
                 setTransferForm((current) => ({
                   ...current,
                   source_product_id: event.target.value,
+                  destination_product_id: '',
                 }))
               }
               required
@@ -640,16 +697,17 @@ export default function TradeWorkspace() {
               onChange={(event) =>
                 setTransferForm((current) => ({
                   ...current,
-                  destination_listing_id: event.target.value,
+                  destination_product_id: event.target.value,
                 }))
               }
               required
-              value={transferForm.destination_listing_id}
+              value={transferForm.destination_product_id}
             >
               <option value="">Select receiving product</option>
               {destinations.map((listing) => (
-                <option key={listing.id} value={listing.id}>
+                <option key={listing.product_id} value={listing.product_id}>
                   {listing.shop_name} · {listing.product_name}
+                  {ownedShopIds.has(listing.shop_id) ? ' (your shop)' : ''}
                 </option>
               ))}
             </select>
@@ -691,7 +749,9 @@ export default function TradeWorkspace() {
       </section>
 
       <section className="mt-8">
-        <h2 className="text-2xl font-bold text-slate-950">Your wholesale offers</h2>
+        <h2 className="text-2xl font-bold text-slate-950">
+          Your wholesale offers
+        </h2>
         {data.myListings.length ? (
           <ul className="mt-4 grid gap-3 md:grid-cols-2">
             {data.myListings.map((listing) => (
@@ -742,12 +802,17 @@ export default function TradeWorkspace() {
       <section className="mt-10">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-slate-950">Find suppliers</h2>
+            <h2 className="text-2xl font-bold text-slate-950">
+              Find suppliers
+            </h2>
             <p className="mt-1 text-sm text-slate-600">
               Search approved bulk offers and ask the seller for a quote.
             </p>
           </div>
-          <form className="flex gap-2" onSubmit={(event) => void searchListings(event)}>
+          <form
+            className="flex gap-2"
+            onSubmit={(event) => void searchListings(event)}
+          >
             <input
               aria-label="Search wholesale listings"
               className={fieldClass}
@@ -768,7 +833,9 @@ export default function TradeWorkspace() {
                 key={listing.id}
               >
                 <div className="flex justify-between gap-3">
-                  <h3 className="font-bold text-slate-950">{listing.product_name}</h3>
+                  <h3 className="font-bold text-slate-950">
+                    {listing.product_name}
+                  </h3>
                   <span className="text-sm font-semibold text-emerald-800">
                     MOQ {listing.minimum_order_quantity} {listing.unit_label}
                   </span>
@@ -787,7 +854,8 @@ export default function TradeWorkspace() {
                     )
                     .join(' · ') || 'Request current pricing'}
                 </p>
-                {listing.shop_id !== data.shop.id && (
+                {!ownedShopIds.has(listing.shop_id) &&
+                listing.shop_id !== data.shop.id ? (
                   <form
                     className="mt-4 grid gap-2"
                     onSubmit={(event) => void requestQuote(event, listing)}
@@ -826,10 +894,19 @@ export default function TradeWorkspace() {
                       placeholder="Message to supplier"
                       required
                     />
-                    <button className={buttonClass} disabled={busy} type="submit">
+                    <button
+                      className={buttonClass}
+                      disabled={busy}
+                      type="submit"
+                    >
                       Request quote
                     </button>
                   </form>
+                ) : (
+                  <p className="mt-4 text-sm text-slate-600">
+                    You cannot purchase from your own shops. Use an explicit
+                    stock transfer instead.
+                  </p>
                 )}
               </li>
             ))}
@@ -850,7 +927,9 @@ export default function TradeWorkspace() {
                 className="rounded-xl border border-slate-200 bg-white p-5"
                 key={supplier.shop_id}
               >
-                <h3 className="font-bold text-slate-950">{supplier.shop_name}</h3>
+                <h3 className="font-bold text-slate-950">
+                  {supplier.shop_name}
+                </h3>
                 <p className="mt-1 text-sm text-slate-600">
                   {supplier.city}, {supplier.province} ·{' '}
                   {supplier.active_listing_count} active offers ·{' '}
@@ -862,10 +941,7 @@ export default function TradeWorkspace() {
                     : 'No completed-trade reviews yet'}
                 </p>
                 {supplier.reviews.slice(0, 2).map((review) => (
-                  <p
-                    className="mt-2 text-sm text-slate-700"
-                    key={review.id}
-                  >
+                  <p className="mt-2 text-sm text-slate-700" key={review.id}>
                     {review.rating} / 5 · {review.body}
                   </p>
                 ))}
@@ -880,7 +956,9 @@ export default function TradeWorkspace() {
       </section>
 
       <section className="mt-10">
-        <h2 className="text-2xl font-bold text-slate-950">RFQs and negotiation</h2>
+        <h2 className="text-2xl font-bold text-slate-950">
+          RFQs and negotiation
+        </h2>
         {myRfqs.length ? (
           <ul className="mt-4 space-y-4">
             {myRfqs.map((rfq) => (
@@ -1028,7 +1106,11 @@ export default function TradeWorkspace() {
                           value={quoteForms[rfq.id]?.[key] ?? ''}
                         />
                       ))}
-                      <button className={buttonClass} disabled={busy} type="submit">
+                      <button
+                        className={buttonClass}
+                        disabled={busy}
+                        type="submit"
+                      >
                         Submit quote
                       </button>
                     </form>
@@ -1037,12 +1119,16 @@ export default function TradeWorkspace() {
             ))}
           </ul>
         ) : (
-          <p className="mt-3 text-sm text-slate-600">No RFQs for this shop yet.</p>
+          <p className="mt-3 text-sm text-slate-600">
+            No RFQs for this shop yet.
+          </p>
         )}
       </section>
 
       <section className="mt-10">
-        <h2 className="text-2xl font-bold text-slate-950">Purchase orders and trade history</h2>
+        <h2 className="text-2xl font-bold text-slate-950">
+          Purchase orders and trade history
+        </h2>
         {myOrders.length ? (
           <ul className="mt-4 space-y-4">
             {myOrders.map((order) => {
@@ -1073,7 +1159,9 @@ export default function TradeWorkspace() {
                     {order.quantity} units at NPR {order.unit_price} · Total NPR{' '}
                     {order.total}
                   </p>
-                  <p className="mt-1 text-sm text-slate-700">{order.delivery_terms}</p>
+                  <p className="mt-1 text-sm text-slate-700">
+                    {order.delivery_terms}
+                  </p>
                   <div className="mt-3 flex flex-wrap items-center gap-3">
                     {nextStatus && (
                       <button
@@ -1109,7 +1197,7 @@ export default function TradeWorkspace() {
                         type="file"
                       />
                     </label>
-                    {order.documents.map((document) => (
+                    {order.documents.map((document) =>
                       documentUrls[document.id] ? (
                         <a
                           className="text-sm font-semibold text-emerald-800 underline"
@@ -1129,8 +1217,8 @@ export default function TradeWorkspace() {
                         >
                           Get link for {document.original_filename}
                         </button>
-                      )
-                    ))}
+                      ),
+                    )}
                   </div>
                   {isBuyer &&
                     order.status === 'received' &&
@@ -1146,7 +1234,10 @@ export default function TradeWorkspace() {
                             setReviewForms((current) => ({
                               ...current,
                               [order.id]: {
-                                ...(current[order.id] ?? { rating: '5', body: '' }),
+                                ...(current[order.id] ?? {
+                                  rating: '5',
+                                  body: '',
+                                }),
                                 rating: event.target.value,
                               },
                             }))
@@ -1166,7 +1257,10 @@ export default function TradeWorkspace() {
                             setReviewForms((current) => ({
                               ...current,
                               [order.id]: {
-                                ...(current[order.id] ?? { rating: '5', body: '' }),
+                                ...(current[order.id] ?? {
+                                  rating: '5',
+                                  body: '',
+                                }),
                                 body: event.target.value,
                               },
                             }))
@@ -1175,7 +1269,11 @@ export default function TradeWorkspace() {
                           required
                           value={reviewForms[order.id]?.body ?? ''}
                         />
-                        <button className={buttonClass} disabled={busy} type="submit">
+                        <button
+                          className={buttonClass}
+                          disabled={busy}
+                          type="submit"
+                        >
                           Review supplier
                         </button>
                       </form>
@@ -1185,12 +1283,16 @@ export default function TradeWorkspace() {
             })}
           </ul>
         ) : (
-          <p className="mt-3 text-sm text-slate-600">No trade purchase orders yet.</p>
+          <p className="mt-3 text-sm text-slate-600">
+            No trade purchase orders yet.
+          </p>
         )}
       </section>
 
       <section className="mt-10 pb-10">
-        <h2 className="text-2xl font-bold text-slate-950">Inter-vendor stock transfers</h2>
+        <h2 className="text-2xl font-bold text-slate-950">
+          Inter-vendor stock transfers
+        </h2>
         {myTransfers.length ? (
           <ul className="mt-4 space-y-3">
             {myTransfers.map((transfer) => {
@@ -1218,15 +1320,17 @@ export default function TradeWorkspace() {
                     </span>
                   </div>
                   <p className="mt-1 text-sm text-slate-600">
-                    {transfer.source_shop_name} → {transfer.destination_shop_name} ·{' '}
-                    {transfer.delivery_terms}
+                    {transfer.source_shop_name} →{' '}
+                    {transfer.destination_shop_name} · {transfer.delivery_terms}
                   </p>
                   <div className="mt-3 flex flex-wrap items-center gap-3">
                     {nextStatus && (
                       <button
                         className={buttonClass}
                         disabled={busy}
-                        onClick={() => void updateTransfer(transfer, nextStatus)}
+                        onClick={() =>
+                          void updateTransfer(transfer, nextStatus)
+                        }
                         type="button"
                       >
                         Mark {nextStatus}
@@ -1237,7 +1341,9 @@ export default function TradeWorkspace() {
                         <button
                           className="rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-50"
                           disabled={busy}
-                          onClick={() => void updateTransfer(transfer, 'cancelled')}
+                          onClick={() =>
+                            void updateTransfer(transfer, 'cancelled')
+                          }
                           type="button"
                         >
                           Cancel transfer
@@ -1257,7 +1363,7 @@ export default function TradeWorkspace() {
                         type="file"
                       />
                     </label>
-                    {transfer.documents.map((document) => (
+                    {transfer.documents.map((document) =>
                       documentUrls[document.id] ? (
                         <a
                           className="text-sm font-semibold text-emerald-800 underline"
@@ -1277,8 +1383,8 @@ export default function TradeWorkspace() {
                         >
                           Get link for {document.original_filename}
                         </button>
-                      )
-                    ))}
+                      ),
+                    )}
                   </div>
                 </li>
               );

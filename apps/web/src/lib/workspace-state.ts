@@ -8,6 +8,7 @@ export type WorkspaceUser = {
   roles: string[];
   profile: { full_name: string; phone: string | null } | null;
   vendor_profile: { business_name: string } | null;
+  owned_shop_ids?: string[];
 };
 
 type Snapshot = {

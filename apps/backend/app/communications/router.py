@@ -44,6 +44,7 @@ from app.identity.dependencies import (
 )
 from app.identity.models import AuditLog, AuthSession, CustomerProfile, PlatformOwner, User
 from app.identity.security import hash_token
+from app.orders.access import require_order_access
 from app.orders.models import (
     CustomerOrder,
     FulfillmentOrder,
@@ -263,31 +264,6 @@ async def _review_report_read(
     )
 
 
-async def _ticket_order_access(
-    session: AsyncSession,
-    context: WorkspaceContext,
-    order_id: UUID,
-) -> CustomerOrder:
-    order = await session.get(CustomerOrder, order_id)
-    if order is None:
-        raise APIError(404, "order_not_found", "The order was not found.")
-    if context.workspace == "customer" and order.customer_id == context.user.id:
-        return order
-    if context.workspace != "vendor" or context.shop is None:
-        raise APIError(404, "order_not_found", "The order was not found.")
-    shop_id = await session.scalar(
-        select(FulfillmentOrder.shop_id)
-        .where(
-            FulfillmentOrder.order_id == order.id,
-            FulfillmentOrder.shop_id == context.shop.id,
-        )
-        .limit(1)
-    )
-    if shop_id is None:
-        raise APIError(404, "order_not_found", "The order was not found.")
-    return order
-
-
 def _require_customer_context(context: WorkspaceContext) -> User:
     if context.workspace != "customer":
         raise APIError(403, "customer_workspace_required", "Switch to Customer mode.")
@@ -361,7 +337,7 @@ async def start_conversation(
         if product is None:
             raise APIError(404, "product_not_found", "The product was not found in this shop.")
     if payload.order_id is not None:
-        order = await _ticket_order_access(session, context, payload.order_id)
+        order = await require_order_access(session, context, payload.order_id)
         owns_fulfillment = await session.scalar(
             select(FulfillmentOrder.id).where(
                 FulfillmentOrder.order_id == order.id,
@@ -804,7 +780,7 @@ async def create_support_ticket(
     if payload.kind == "dispute" and payload.order_id is None:
         raise APIError(422, "dispute_order_required", "A dispute must reference an order.")
     if payload.order_id is not None:
-        await _ticket_order_access(session, context, payload.order_id)
+        await require_order_access(session, context, payload.order_id)
     ticket = SupportTicket(
         created_by_id=user.id,
         workspace=context.workspace,

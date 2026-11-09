@@ -92,6 +92,33 @@ export default function VendorPromotionsPage() {
     }
   }
 
+  async function setPromotionStatus(promotion: Promotion) {
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const updated = await requestApi<Promotion>(
+        `/vendor/promotions/${promotion.id}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ is_active: !promotion.is_active }),
+        },
+      );
+      setPromotions((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      setMessage(`Promotion ${updated.is_active ? 'enabled' : 'disabled'}.`);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Promotion status could not be updated.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <main className="mx-auto min-h-screen max-w-5xl px-5 py-8 sm:px-8">
       <header className="border-b border-slate-200 pb-5">
@@ -231,6 +258,14 @@ export default function VendorPromotionsPage() {
                   {promotion.redemption_count === 1 ? '' : 's'} ·{' '}
                   {promotion.is_active ? 'Active' : 'Inactive'}
                 </p>
+                <button
+                  type="button"
+                  disabled={busy}
+                  className="mt-3 text-sm font-semibold text-emerald-800 underline disabled:opacity-50"
+                  onClick={() => void setPromotionStatus(promotion)}
+                >
+                  {promotion.is_active ? 'Disable' : 'Enable'} {promotion.code}
+                </button>
               </li>
             ))}
             {!promotions.length && (

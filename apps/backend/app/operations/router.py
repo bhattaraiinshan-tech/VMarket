@@ -12,7 +12,13 @@ from app.catalog.models import Product, Shop
 from app.communications.models import ProductReview, SupportTicket
 from app.core.errors import APIError
 from app.db.session import get_session
-from app.identity.dependencies import get_current_admin, get_current_user, get_selected_shop
+from app.identity.dependencies import (
+    WorkspaceContext,
+    get_current_admin,
+    get_current_user,
+    get_selected_shop,
+    get_workspace_context,
+)
 from app.identity.models import AuditLog, User, VendorApplication, VendorProfile
 from app.operations.models import FraudReport, PlatformSettings, Promotion
 from app.operations.schemas import (
@@ -28,6 +34,7 @@ from app.operations.schemas import (
     PromotionRead,
     PromotionStatusUpdate,
 )
+from app.orders.access import require_order_access
 from app.orders.models import CustomerOrder, FulfillmentOrder, PaymentTransaction
 
 router = APIRouter(tags=["operations"])
@@ -373,9 +380,13 @@ async def vendor_create_promotion(
 @router.post("/me/fraud-reports", response_model=FraudReportRead, status_code=201)
 async def create_fraud_report(
     body: FraudReportCreate,
-    reporter: Annotated[User, Depends(get_current_user)],
+    context: Annotated[WorkspaceContext, Depends(get_workspace_context)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> FraudReportRead:
+    if context.workspace not in {"customer", "vendor"}:
+        raise APIError(403, "report_workspace_required", "Select Customer or Vendor workspace.")
+    if context.workspace == "vendor" and context.shop is None:
+        raise APIError(422, "shop_context_required", "Select a shop to continue.")
     entity: type[object] | None = {
         "product": Product,
         "shop": Shop,
@@ -383,10 +394,15 @@ async def create_fraud_report(
         "review": ProductReview,
         "vendor": VendorProfile,
     }.get(body.target_type)
-    if entity is None or await session.get(entity, body.target_id) is None:
+    target = await session.get(entity, body.target_id) if entity is not None else None
+    if target is None:
         raise APIError(404, "report_target_not_found", "The item you are reporting was not found.")
+    if body.target_type == "order":
+        await require_order_access(session, context, body.target_id)
     report = FraudReport(
-        reporter_id=reporter.id,
+        reporter_id=context.user.id,
+        workspace=context.workspace,
+        shop_id=context.shop.id if context.shop is not None else None,
         target_type=body.target_type,
         target_id=body.target_id,
         reason=body.reason,
@@ -404,6 +420,38 @@ async def create_fraud_report(
         ) from None
     await session.refresh(report)
     return FraudReportRead.model_validate(report)
+
+
+@router.patch("/vendor/promotions/{promotion_id}", response_model=PromotionRead)
+async def vendor_update_promotion_status(
+    promotion_id: UUID,
+    body: PromotionStatusUpdate,
+    shop: Annotated[Shop, Depends(get_selected_shop)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PromotionRead:
+    promotion = await session.scalar(
+        select(Promotion)
+        .where(
+            Promotion.id == promotion_id,
+            Promotion.shop_id == shop.id,
+            Promotion.sponsor_type == "vendor",
+        )
+        .with_for_update()
+    )
+    if promotion is None:
+        raise APIError(404, "promotion_not_found", "Promotion was not found for the selected shop.")
+    promotion.is_active = body.is_active
+    _audit(
+        session,
+        shop.owner_user_id,
+        "vendor_promotion_status_updated",
+        "promotion",
+        promotion.id,
+        f"is_active={body.is_active}",
+    )
+    await session.commit()
+    await session.refresh(promotion)
+    return PromotionRead.model_validate(promotion)
 
 
 @router.get("/admin/fraud-reports", response_model=list[FraudReportRead])

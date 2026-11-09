@@ -43,10 +43,12 @@ function ProductCard({
   product,
   onWishlist,
   saved,
+  canWishlist,
 }: {
   product: Product;
   onWishlist: (product: Product) => void;
   saved: boolean;
+  canWishlist: boolean;
 }) {
   return (
     <article className="group flex h-full flex-col overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-sm transition-shadow hover:shadow-lg hover:shadow-emerald-950/5">
@@ -86,15 +88,21 @@ function ProductCard({
         </div>
       </Link>
       <div className="mt-auto border-t border-slate-100 px-5 py-3">
-        <button
-          aria-label={`${saved ? 'Saved' : 'Add to wishlist'}: ${product.name}`}
-          aria-pressed={saved}
-          className="text-sm font-semibold text-emerald-800 hover:text-emerald-950"
-          onClick={() => onWishlist(product)}
-          type="button"
-        >
-          {saved ? '♥ Saved' : '♡ Add to wishlist'}
-        </button>
+        {canWishlist ? (
+          <button
+            aria-label={`${saved ? 'Saved' : 'Add to wishlist'}: ${product.name}`}
+            aria-pressed={saved}
+            className="text-sm font-semibold text-emerald-800 hover:text-emerald-950"
+            onClick={() => onWishlist(product)}
+            type="button"
+          >
+            {saved ? '♥ Saved' : '♡ Add to wishlist'}
+          </button>
+        ) : (
+          <p className="text-sm text-slate-600">
+            Wishlist requires Customer workspace.
+          </p>
+        )}
       </div>
     </article>
   );
@@ -260,30 +268,38 @@ export default function Marketplace() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link
-            className="rounded-lg border border-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-900"
-            href="/vendor"
-          >
-            Vendor workspace
-          </Link>
-          <Link
-            className="rounded-lg border border-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-900"
-            href="/cart"
-          >
-            Cart
-          </Link>
-          <Link
-            className="rounded-lg border border-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-900"
-            href="/orders"
-          >
-            Orders
-          </Link>
-          <Link
-            className="rounded-lg border border-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-900"
-            href="/notifications"
-          >
-            Notifications
-          </Link>
+          {workspace === 'vendor' && user && (
+            <Link
+              className="rounded-lg border border-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-900"
+              href="/vendor"
+            >
+              Vendor workspace
+            </Link>
+          )}
+          {workspace === 'customer' && user && (
+            <>
+              <Link
+                className="rounded-lg border border-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-900"
+                href="/cart"
+              >
+                Cart
+              </Link>
+              <Link
+                className="rounded-lg border border-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-900"
+                href="/orders"
+              >
+                Orders
+              </Link>
+            </>
+          )}
+          {workspace && user && (
+            <Link
+              className="rounded-lg border border-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-900"
+              href="/notifications"
+            >
+              Notifications
+            </Link>
+          )}
         </div>
       </header>
 
@@ -459,6 +475,7 @@ export default function Marketplace() {
                   onWishlist={(item) => void toggleWishlist(item)}
                   product={product}
                   saved={savedIds.has(product.id)}
+                  canWishlist={workspace === 'customer' && !!user}
                 />
               ))}
             </div>

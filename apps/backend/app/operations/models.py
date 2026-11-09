@@ -107,6 +107,12 @@ class Promotion(Base):
 class FraudReport(Base):
     __tablename__ = "fraud_reports"
     __table_args__ = (
+        CheckConstraint("workspace IN ('customer', 'vendor')", name="ck_fraud_reports_workspace"),
+        CheckConstraint(
+            "(workspace = 'vendor' AND shop_id IS NOT NULL) OR "
+            "(workspace = 'customer' AND shop_id IS NULL)",
+            name="ck_fraud_reports_shop_scope",
+        ),
         CheckConstraint(
             "target_type IN ('product', 'shop', 'order', 'review', 'vendor')",
             name="ck_fraud_reports_target_type",
@@ -132,6 +138,10 @@ class FraudReport(Base):
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     reporter_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    workspace: Mapped[str] = mapped_column(String(20))
+    shop_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("shops.id", ondelete="RESTRICT"), index=True
     )
     target_type: Mapped[str] = mapped_column(String(16))
     target_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True))

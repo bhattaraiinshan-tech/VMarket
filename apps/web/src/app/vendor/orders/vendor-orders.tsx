@@ -185,6 +185,27 @@ export default function VendorOrders() {
                     {order.status.replaceAll('_', ' ')}
                   </span>
                 </div>
+                <section
+                  aria-label="Delivery details"
+                  className="mt-4 rounded-lg bg-slate-50 p-3 text-sm"
+                >
+                  <h3 className="font-semibold">Deliver to</h3>
+                  <p>
+                    {order.shipping_address.recipient_name} ·{' '}
+                    {order.shipping_address.phone}
+                  </p>
+                  <p>
+                    {[
+                      order.shipping_address.street_address,
+                      order.shipping_address.area,
+                      order.shipping_address.city,
+                      order.shipping_address.province,
+                      order.shipping_address.postal_code,
+                    ]
+                      .filter(Boolean)
+                      .join(', ')}
+                  </p>
+                </section>
                 <ul className="mt-4 space-y-2 border-t border-slate-100 pt-4">
                   {order.items.map((item) => (
                     <li

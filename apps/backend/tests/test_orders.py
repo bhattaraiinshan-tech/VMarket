@@ -25,7 +25,7 @@ from app.identity.models import (
 )
 from app.identity.security import hash_token
 from app.main import create_app
-from app.operations.models import PlatformSettings, Promotion
+from app.operations.models import FraudReport, PlatformSettings, Promotion
 from app.orders.models import (
     CartItem,
     CustomerOrder,
@@ -173,6 +173,109 @@ def _sign_in(client: AsyncClient, user: str) -> None:
     client.headers["X-VMarket-Workspace"] = "vendor" if user.startswith("vendor") else "customer"
     if user.startswith("vendor"):
         client.headers["X-VMarket-Shop-Id"] = client.headers[f"X-Test-Shop-{user}"]
+
+
+async def test_fraud_reports_require_workspace_and_record_shop(orders_client: OrdersClient) -> None:
+    client, factory, ids = orders_client
+    body = {
+        "target_type": "product",
+        "target_id": str(ids["product2"]),
+        "reason": "Suspicious product",
+    }
+    client.headers.pop("X-VMarket-Workspace")
+    assert (await client.post("/api/v1/me/fraud-reports", json=body)).status_code == 422
+    _sign_in(client, "vendor1")
+    client.headers.pop("X-VMarket-Shop-Id")
+    assert (await client.post("/api/v1/me/fraud-reports", json=body)).status_code == 422
+    _sign_in(client, "vendor1")
+    created = await client.post("/api/v1/me/fraud-reports", json=body)
+    assert created.status_code == 201, created.text
+    assert created.json()["workspace"] == "vendor"
+    assert created.json()["shop_id"] == str(ids["shop1"])
+    async with factory() as session:
+        saved = await session.get(FraudReport, UUID(created.json()["id"]))
+        assert saved is not None and saved.shop_id == ids["shop1"]
+        session.add(PlatformOwner(user_id=ids["vendor1"]))
+        await session.commit()
+    client.headers["X-VMarket-Workspace"] = "admin"
+    client.headers.pop("X-VMarket-Shop-Id")
+    assert (await client.post("/api/v1/me/fraud-reports", json=body)).status_code == 403
+
+
+async def test_fraud_order_target_requires_resource_relationship(
+    orders_client: OrdersClient,
+) -> None:
+    client, _, ids = orders_client
+    await client.post(
+        "/api/v1/me/cart/items", json={"product_id": str(ids["product1"]), "quantity": 1}
+    )
+    order = await client.post(
+        "/api/v1/me/checkout",
+        json={"address_id": str(ids["address"]), "idempotency_key": "fraud-order-request"},
+    )
+    assert order.status_code == 201, order.text
+    body = {"target_type": "order", "target_id": order.json()["id"], "reason": "Order dispute"}
+    _sign_in(client, "vendor2")
+    assert (await client.post("/api/v1/me/fraud-reports", json=body)).status_code == 404
+    _sign_in(client, "vendor1")
+    assert (await client.post("/api/v1/me/fraud-reports", json=body)).status_code == 201
+    _sign_in(client, "vendor2")
+    client.headers["X-VMarket-Workspace"] = "customer"
+    client.headers.pop("X-VMarket-Shop-Id")
+    assert (await client.post("/api/v1/me/fraud-reports", json=body)).status_code == 404
+
+
+async def test_vendor_can_disable_only_selected_shop_promotion(orders_client: OrdersClient) -> None:
+    client, factory, ids = orders_client
+    _sign_in(client, "vendor1")
+    promo = await client.post(
+        "/api/v1/vendor/promotions",
+        json={
+            "code": "DISABLE10",
+            "title": "Discount",
+            "discount_type": "percent",
+            "discount_value": "10",
+        },
+    )
+    assert promo.status_code == 201, promo.text
+    path = f"/api/v1/vendor/promotions/{promo.json()['id']}"
+    _sign_in(client, "vendor2")
+    assert (await client.patch(path, json={"is_active": False})).status_code == 404
+    _sign_in(client, "customer")
+    assert (await client.patch(path, json={"is_active": False})).status_code == 403
+    _sign_in(client, "vendor1")
+    result = await client.patch(path, json={"is_active": False})
+    assert result.status_code == 200, result.text
+    assert result.json()["is_active"] is False
+    from app.identity.models import AuditLog
+
+    async with factory() as session:
+        event = await session.scalar(
+            select(AuditLog).where(AuditLog.action == "vendor_promotion_status_updated")
+        )
+        assert event is not None and event.actor_id == ids["vendor1"]
+
+
+async def test_vendor_fulfillment_contains_only_delivery_snapshot(
+    orders_client: OrdersClient,
+) -> None:
+    client, _, ids = orders_client
+    await client.post(
+        "/api/v1/me/cart/items", json={"product_id": str(ids["product1"]), "quantity": 1}
+    )
+    result = await client.post(
+        "/api/v1/me/checkout",
+        json={"address_id": str(ids["address"]), "idempotency_key": "delivery-snapshot"},
+    )
+    assert result.status_code == 201, result.text
+    _sign_in(client, "vendor1")
+    fulfillment = (await client.get("/api/v1/vendor/orders")).json()["items"][0]
+    assert fulfillment["shipping_address"]["recipient_name"] == "A Customer"
+    assert fulfillment["shipping_address"]["street_address"] == "1 Market Road"
+    assert "label" not in fulfillment["shipping_address"]
+    assert "customer_email" not in fulfillment
+    _sign_in(client, "vendor2")
+    assert (await client.get("/api/v1/vendor/orders")).json()["items"] == []
 
 
 @pytest.mark.asyncio

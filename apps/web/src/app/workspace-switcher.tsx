@@ -52,6 +52,37 @@ export default function WorkspaceSwitcher() {
   }
 
   if (!user) return null;
+  const links =
+    workspace === 'customer'
+      ? [
+          ['/marketplace', 'Marketplace'],
+          ['/cart', 'Cart'],
+          ['/orders', 'Customer orders'],
+          ['/messages', 'Messages'],
+          ['/notifications', 'Notifications'],
+          ['/support', 'Support and disputes'],
+          ['/', 'Profile, addresses and vendor application'],
+        ]
+      : workspace === 'vendor'
+        ? [
+            ['/vendor', 'Vendor catalogue'],
+            ['/vendor/orders', 'Fulfillment and payments'],
+            ['/vendor/trade', 'Wholesale and stock transfers'],
+            ['/vendor/reviews', 'Shop reviews'],
+            ['/vendor/promotions', 'Shop promotions'],
+            ['/messages', 'Shop messages'],
+            ['/notifications', 'Shop notifications'],
+            ['/support', 'Shop support and disputes'],
+          ]
+        : workspace === 'admin'
+          ? [
+              ['/admin/operations', 'Dashboard, policies and investigations'],
+              ['/admin/accounts', 'Accounts, approvals and audit history'],
+              ['/admin/catalog', 'Catalogue admin'],
+              ['/admin/communications', 'Reviews and support queue'],
+              ['/notifications', 'Admin notifications'],
+            ]
+          : [];
   return (
     <header
       aria-label="Workspace selection"
@@ -131,22 +162,26 @@ export default function WorkspaceSwitcher() {
             >
               Refresh shops
             </button>
-            <Link href="/vendor" className="underline">
-              Vendor catalogue
-            </Link>
           </>
         )}
-        {workspace === 'customer' && (
-          <Link href="/orders" className="underline">
-            Customer orders
-          </Link>
-        )}
-        {workspace === 'admin' && (
-          <Link href="/admin/catalog" className="underline">
-            Catalogue admin
-          </Link>
-        )}
       </div>
+      <nav
+        aria-label={`${workspace ?? 'Account'} navigation`}
+        className="mx-auto mt-3 flex max-w-7xl flex-wrap gap-x-5 gap-y-2"
+      >
+        {links.map(([href, label]) => (
+          <Link key={href} href={href} className="underline">
+            {label}
+          </Link>
+        ))}
+      </nav>
+      {workspace === 'vendor' && (
+        <p className="mx-auto mt-3 max-w-7xl font-semibold">
+          {shopId
+            ? `Working in: ${shops.find((shop) => shop.id === shopId)?.name ?? 'selected shop'}`
+            : 'Select a shop above; listing and creating shops remain available.'}
+        </p>
+      )}
       {workspace === 'vendor' && creating && (
         <form
           aria-label="Create shop"

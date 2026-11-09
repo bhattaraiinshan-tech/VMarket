@@ -50,6 +50,7 @@ from app.trading.schemas import (
     TradeStockTransferRead,
     TradeSupplierRead,
     TradeTransferEventRead,
+    TransferDestinationRead,
     WholesaleListingCreate,
     WholesaleListingRead,
     WholesalePriceTierRead,
@@ -1135,6 +1136,34 @@ async def create_stock_transfer(
     await session.commit()
     await session.refresh(transfer)
     return await _transfer_read(session, transfer)
+
+
+@router.get("/vendor/trade/transfer-destinations", response_model=list[TransferDestinationRead])
+async def owned_transfer_destinations(
+    shop: Annotated[Shop, Depends(get_active_shop)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[TransferDestinationRead]:
+    rows = await session.execute(
+        select(Shop, Product)
+        .join(Product, Product.shop_id == Shop.id)
+        .where(
+            Shop.owner_user_id == shop.owner_user_id,
+            Shop.id != shop.id,
+            Shop.is_active.is_(True),
+            Product.status == "approved",
+        )
+        .order_by(Shop.slot, Product.name, Product.id)
+    )
+    return [
+        TransferDestinationRead(
+            shop_id=destination.id,
+            shop_name=destination.name,
+            product_id=product.id,
+            product_name=product.name,
+            category_id=product.category_id,
+        )
+        for destination, product in rows
+    ]
 
 
 @router.get("/trade/transfers", response_model=list[TradeStockTransferRead])

@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.catalog.models import Shop
 from app.core.config import get_settings
 from app.core.errors import APIError
 from app.db.session import get_session
@@ -22,13 +23,15 @@ from app.identity.dependencies import (
     SESSION_COOKIE,
     SESSION_DURATION,
     AuthenticatedUser,
+    WorkspaceContext,
     get_current_admin,
     get_current_auth,
     get_current_customer,
     get_current_user,
+    get_workspace_context,
     user_capabilities,
 )
-from app.identity.email import send_identity_email
+from app.identity.email import EmailDeliveryError, send_identity_email
 from app.identity.models import (
     AuditLog,
     AuthSession,
@@ -45,12 +48,16 @@ from app.identity.schemas import (
     AccountSuspension,
     AddressCreate,
     AddressRead,
+    AdminExportRead,
     AdminUserRead,
     AdminVendorApplicationRead,
     AuditLogRead,
+    CustomerExportRead,
     DocumentRead,
     DocumentUrlRead,
     EmailRequest,
+    ExportAccountRead,
+    ExportShopRead,
     LoginRequest,
     MessageResponse,
     PasswordResetRequest,
@@ -63,7 +70,9 @@ from app.identity.schemas import (
     VendorApplicationCreate,
     VendorApplicationRead,
     VendorDecision,
+    VendorExportRead,
     VendorProfileRead,
+    WorkspaceExportRead,
 )
 from app.identity.security import create_opaque_token, hash_password, hash_token, verify_password
 from app.storage.client import get_minio_client
@@ -77,13 +86,15 @@ DOCUMENT_EXTENSIONS = {"application/pdf": "pdf", "image/jpeg": "jpg", "image/png
 EMAIL_DELIVERY_ERROR = "Email delivery is temporarily unavailable. Please try again later."
 
 
-def _user_read(user: User) -> UserRead:
+async def _user_read(session: AsyncSession, user: User) -> UserRead:
+    owned_shop_ids = await session.scalars(select(Shop.id).where(Shop.owner_user_id == user.id))
     return UserRead(
         id=user.id,
         email=user.email,
         email_verified=user.email_verified,
         account_status=user.account_status,
         roles=user_capabilities(user),
+        owned_shop_ids=list(owned_shop_ids),
         profile=ProfileRead.model_validate(user.profile) if user.profile else None,
         vendor_profile=(
             VendorProfileRead.model_validate(user.vendor_profile) if user.vendor_profile else None
@@ -162,9 +173,14 @@ async def _deliver_identity_email(
 
     try:
         await run_in_threadpool(send_identity_email, recipient, subject, body)
-    except (OSError, smtplib.SMTPException):
+    except (OSError, smtplib.SMTPException, EmailDeliveryError) as exc:
         logger.error(
-            "Identity email delivery failed", extra={"error_code": "email_delivery_failed"}
+            "Identity email delivery failed",
+            extra={
+                "error_code": "email_delivery_failed",
+                "failure_type": type(exc).__name__,
+                "provider_error": str(exc) if isinstance(exc, EmailDeliveryError) else None,
+            },
         )
         raise APIError(503, "email_delivery_unavailable", EMAIL_DELIVERY_ERROR) from None
 
@@ -305,7 +321,7 @@ async def login(
     if user is None:
         raise APIError(500, "account_unavailable", "The account could not be loaded.")
     _set_session_cookie(response, raw_token)
-    return _user_read(user)
+    return await _user_read(session, user)
 
 
 @router.post("/auth/logout", response_model=MessageResponse, summary="Revoke the current session")
@@ -482,8 +498,11 @@ async def revoke_session(
 
 
 @router.get("/me", response_model=UserRead, summary="Get the current profile")
-async def read_me(user: Annotated[User, Depends(get_current_user)]) -> UserRead:
-    return _user_read(user)
+async def read_me(
+    user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> UserRead:
+    return await _user_read(session, user)
 
 
 @router.patch("/me", response_model=UserRead, summary="Update the current profile")
@@ -506,7 +525,7 @@ async def update_me(
             409, "phone_already_registered", "This phone number is already in use."
         ) from None
     await session.refresh(user.profile)
-    return _user_read(user)
+    return await _user_read(session, user)
 
 
 @router.get("/me/addresses", response_model=list[AddressRead], summary="List delivery addresses")
@@ -646,41 +665,48 @@ async def delete_address(
     return MessageResponse(message="The delivery address has been deleted.")
 
 
-@router.get("/me/export", summary="Export personal account data")
+@router.get(
+    "/me/export",
+    response_model=WorkspaceExportRead,
+    summary="Export the selected workspace's profile data",
+)
 async def export_personal_data(
-    user: Annotated[User, Depends(get_current_user)],
+    context: Annotated[WorkspaceContext, Depends(get_workspace_context)],
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> dict[str, object]:
-    addresses = await session.scalars(
-        select(DeliveryAddress).where(DeliveryAddress.user_id == user.id)
-    )
-    applications = await session.scalars(
-        select(VendorApplication).where(VendorApplication.user_id == user.id)
-    )
-    return {
-        "account": {
-            "id": str(user.id),
-            "email": user.email,
-            "email_verified": user.email_verified,
-            "created_at": user.created_at.isoformat(),
-            "account_status": user.account_status,
-        },
-        "profile": (
-            {"full_name": user.profile.full_name, "phone": user.profile.phone}
-            if user.profile
-            else None
-        ),
-        "vendor_profile": (
-            {"business_name": user.vendor_profile.business_name} if user.vendor_profile else None
-        ),
-        "addresses": [
-            AddressRead.model_validate(item).model_dump(mode="json") for item in addresses
-        ],
-        "vendor_applications": [
-            VendorApplicationRead.model_validate(item).model_dump(mode="json")
-            for item in applications
-        ],
-    }
+) -> WorkspaceExportRead:
+    user = context.user
+    if context.workspace == "vendor" and context.shop is None:
+        raise APIError(422, "shop_context_required", "Select a shop to export its workspace.")
+    account = ExportAccountRead.model_validate(user)
+    if context.workspace == "customer":
+        addresses = await session.scalars(
+            select(DeliveryAddress).where(DeliveryAddress.user_id == user.id)
+        )
+        applications = await session.scalars(
+            select(VendorApplication).where(VendorApplication.user_id == user.id)
+        )
+        if user.profile is None:
+            raise APIError(403, "customer_profile_required", "Customer profile is required.")
+        return CustomerExportRead(
+            account=account,
+            profile=ProfileRead.model_validate(user.profile),
+            addresses=[AddressRead.model_validate(item) for item in addresses],
+            vendor_applications=[
+                VendorApplicationRead.model_validate(item) for item in applications
+            ],
+        )
+    if context.workspace == "vendor" and context.shop is not None:
+        if user.vendor_profile is None:
+            raise APIError(403, "vendor_profile_required", "Approved vendor profile is required.")
+        return VendorExportRead(
+            account=account,
+            shop_id=context.shop.id,
+            vendor_profile=VendorProfileRead.model_validate(user.vendor_profile),
+            shop=ExportShopRead.model_validate(context.shop),
+        )
+    if context.workspace != "admin":
+        raise APIError(403, "workspace_required", "Select a supported workspace.")
+    return AdminExportRead(account=account, owner={"user_id": user.id})
 
 
 @router.post(
@@ -725,7 +751,7 @@ async def deactivate_account(
 )
 async def create_vendor_application(
     body: VendorApplicationCreate,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> VendorApplicationRead:
     existing = await session.scalar(
@@ -761,7 +787,7 @@ async def create_vendor_application(
     summary="List the current user's vendor applications",
 )
 async def list_my_vendor_applications(
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[VendorApplicationRead]:
     applications = await session.scalars(
@@ -781,7 +807,7 @@ async def list_my_vendor_applications(
 async def upload_vendor_document(
     application_id: UUID,
     document_type: Annotated[str, Query()],
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
     file: Annotated[UploadFile, File()],
 ) -> DocumentRead:
@@ -853,7 +879,7 @@ async def upload_vendor_document(
 )
 async def list_vendor_documents(
     application_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[DocumentRead]:
     application = await _user_application(session, user.id, application_id)
@@ -873,7 +899,7 @@ async def list_vendor_documents(
 async def vendor_document_url(
     application_id: UUID,
     document_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
+    user: Annotated[User, Depends(get_current_customer)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> DocumentUrlRead:
     application = await _user_application(session, user.id, application_id)

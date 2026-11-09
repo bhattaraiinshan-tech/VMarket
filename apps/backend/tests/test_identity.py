@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from app.catalog.models import Shop
 from app.db.base import Base
 from app.db.session import get_session
 from app.identity import router as identity_router
@@ -93,6 +94,73 @@ async def test_password_hashes_are_salted_and_verified() -> None:
     assert not verify_password("wrong-password", first)
     assert not verify_password("wrong-password", "malformed")
     assert hash_token("opaque-token") != "opaque-token"
+
+
+async def test_applicant_operations_and_export_require_explicit_workspace(
+    identity_client: IdentityClient,
+) -> None:
+    client, emails, factory = identity_client
+    await _register_and_verify(client, emails, "workspace@example.com")
+    signed_in = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "workspace@example.com",
+            "password": "a-correct-horse-battery-staple",
+        },
+    )
+    user_id = UUID(signed_in.json()["id"])
+    async with factory() as session:
+        session.add(VendorProfile(user_id=user_id, business_name="Test business"))
+        session.add(PlatformOwner(user_id=user_id))
+        await session.flush()
+        shop = Shop(
+            slot=1,
+            owner_user_id=user_id,
+            name="My shop",
+            slug="export-shop",
+            city="Kathmandu",
+            province="Bagmati",
+        )
+        session.add(shop)
+        await session.commit()
+        shop_id = shop.id
+    applicant = {
+        "business_name": "Test business",
+        "business_type": "retail",
+        "business_address": "1 Market Road",
+    }
+    client.headers.pop("X-VMarket-Workspace")
+    for path in ("/api/v1/me/export", "/api/v1/vendors/applications/me"):
+        assert (await client.get(path)).status_code == 422
+    assert (await client.post("/api/v1/vendors/applications", json=applicant)).status_code == 422
+    for workspace in ("vendor", "admin"):
+        client.headers["X-VMarket-Workspace"] = workspace
+        assert (await client.get("/api/v1/vendors/applications/me")).status_code == 403
+        assert (
+            await client.post("/api/v1/vendors/applications", json=applicant)
+        ).status_code == 403
+        for path in (
+            f"/api/v1/vendors/applications/{user_id}/documents",
+            f"/api/v1/vendors/applications/{user_id}/documents/{user_id}/url",
+        ):
+            assert (await client.get(path)).status_code == 403
+    client.headers["X-VMarket-Workspace"] = "vendor"
+    assert (await client.get("/api/v1/me/export")).status_code == 422
+    client.headers["X-VMarket-Shop-Id"] = str(shop_id)
+    exported = (await client.get("/api/v1/me/export")).json()
+    assert exported["workspace"] == "vendor"
+    assert exported["shop"]["id"] == str(shop_id)
+    assert "addresses" not in exported and "profile" not in exported
+    assert "vendor_applications" not in exported
+    client.headers.pop("X-VMarket-Shop-Id")
+    client.headers["X-VMarket-Workspace"] = "admin"
+    exported = (await client.get("/api/v1/me/export")).json()
+    assert set(exported) == {"account", "workspace", "shop_id", "owner"}
+    client.headers["X-VMarket-Workspace"] = "customer"
+    exported = (await client.get("/api/v1/me/export")).json()
+    assert "addresses" in exported and "vendor_applications" in exported
+    assert "vendor_profile" not in exported and "shop" not in exported
+    assert (await client.get("/api/v1/me")).json()["owned_shop_ids"] == [str(shop_id)]
 
 
 async def test_login_requires_verified_email_and_registration_is_case_insensitive(

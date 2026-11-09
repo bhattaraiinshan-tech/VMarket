@@ -94,6 +94,29 @@ afterEach(() => {
 
 describe('marketplace', () => {
   beforeEach(() => installTestWorkspace());
+  it.each(['customer', 'vendor', 'admin'] as const)(
+    'shows only valid %s header actions',
+    async (workspace) => {
+      installTestWorkspace(workspace);
+      installFetchMock();
+      render(<Marketplace />);
+      await screen.findByText('Handwoven Basket');
+      expect(screen.queryByRole('link', { name: 'Cart' }) !== null).toBe(
+        workspace === 'customer',
+      );
+      expect(screen.queryByRole('link', { name: 'Orders' }) !== null).toBe(
+        workspace === 'customer',
+      );
+      expect(
+        screen.queryByRole('link', { name: 'Vendor workspace' }) !== null,
+      ).toBe(workspace === 'vendor');
+      expect(
+        screen.queryByRole('button', {
+          name: 'Add to wishlist: Handwoven Basket',
+        }) !== null,
+      ).toBe(workspace === 'customer');
+    },
+  );
   it('searches and filters published products and supports wishlists', async () => {
     const fetchMock = installFetchMock();
     render(<Marketplace />);

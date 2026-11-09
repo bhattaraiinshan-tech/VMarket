@@ -107,6 +107,7 @@ class FulfillmentOrderRead(BaseModel):
     commission_rate_bps: int
     commission_amount: Decimal
     tracking_number: str | None
+    shipping_address: Mapping[str, str | None]
     created_at: datetime
     updated_at: datetime
     items: list[OrderItemRead]

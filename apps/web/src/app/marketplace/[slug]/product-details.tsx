@@ -13,8 +13,10 @@ import {
   requestApi,
 } from '@/lib/api';
 import FraudReportForm from '@/app/fraud-report-form';
+import { useWorkspace } from '@/lib/workspace-context';
 
 export default function ProductDetails({ slug }: { slug: string }) {
+  const { user, workspace } = useWorkspace();
   const router = useRouter();
   const [product, setProduct] = useState<Product | null>(null);
   const [related, setRelated] = useState<Product[]>([]);
@@ -29,6 +31,9 @@ export default function ProductDetails({ slug }: { slug: string }) {
   const selectedVariant = product?.variants.find(
     (variant) => variant.id === selectedVariantId,
   );
+  const isCustomer = workspace === 'customer' && !!user;
+  const ownShop =
+    !!product && !!user?.owned_shop_ids?.includes(product.shop_id);
 
   useEffect(() => {
     let active = true;
@@ -280,48 +285,74 @@ export default function ProductDetails({ slug }: { slug: string }) {
                 value={quantity}
               />
             </label>
-            <button
-              className="rounded-lg bg-emerald-800 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={
-                !product.available ||
-                quantity < 1 ||
-                (product.variants.length > 0 &&
-                  (product.variants.find(
-                    (item) => item.id === selectedVariantId,
-                  )?.stock ?? 0) < 1)
-              }
-              onClick={() => void addToCart()}
-              type="button"
-            >
-              Add to cart
-            </button>
-            <button
-              aria-pressed={saved}
-              className="rounded-lg border border-emerald-800 px-4 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-50"
-              onClick={() => void toggleWishlist()}
-              type="button"
-            >
-              {saved ? '♥ Saved to wishlist' : '♡ Add to wishlist'}
-            </button>
+            {isCustomer && (
+              <button
+                className="rounded-lg bg-emerald-800 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={
+                  ownShop ||
+                  !product.available ||
+                  quantity < 1 ||
+                  (product.variants.length > 0 &&
+                    (product.variants.find(
+                      (item) => item.id === selectedVariantId,
+                    )?.stock ?? 0) < 1)
+                }
+                onClick={() => void addToCart()}
+                type="button"
+              >
+                Add to cart
+              </button>
+            )}
+            {isCustomer && (
+              <button
+                aria-pressed={saved}
+                className="rounded-lg border border-emerald-800 px-4 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-50"
+                onClick={() => void toggleWishlist()}
+                type="button"
+              >
+                {saved ? '♥ Saved to wishlist' : '♡ Add to wishlist'}
+              </button>
+            )}
+            {!isCustomer && (
+              <p className="text-sm text-slate-600">
+                {user ? (
+                  'Select Customer workspace above to shop, save products or contact vendors.'
+                ) : (
+                  <Link href="/" className="underline">
+                    Sign in and select Customer workspace to shop.
+                  </Link>
+                )}
+              </p>
+            )}
+            {isCustomer && ownShop && (
+              <p className="text-sm text-slate-600">
+                You cannot buy from your own shops. Use Vendor stock transfers
+                instead.
+              </p>
+            )}
             <Link
               className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800"
               href={`/shops/${product.shop_slug}`}
             >
               Visit {product.shop_name}
             </Link>
-            <button
-              className="rounded-lg border border-emerald-800 px-4 py-2 text-sm font-semibold text-emerald-900"
-              onClick={() => void startConversation()}
-              type="button"
-            >
-              Message vendor
-            </button>
-            <Link
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800"
-              href="/cart"
-            >
-              View cart
-            </Link>
+            {isCustomer && !ownShop && (
+              <button
+                className="rounded-lg border border-emerald-800 px-4 py-2 text-sm font-semibold text-emerald-900"
+                onClick={() => void startConversation()}
+                type="button"
+              >
+                Message vendor
+              </button>
+            )}
+            {isCustomer && (
+              <Link
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800"
+                href="/cart"
+              >
+                View cart
+              </Link>
+            )}
           </div>
           {cartMessage && (
             <p className="mt-3 text-sm text-emerald-800" role="status">
@@ -426,16 +457,18 @@ export default function ProductDetails({ slug }: { slug: string }) {
                     </p>
                   </div>
                 )}
-                <button
-                  className="mt-3 text-xs font-semibold text-slate-600 underline disabled:no-underline disabled:opacity-60"
-                  disabled={reportedReviewIds.includes(review.id)}
-                  onClick={() => void reportReview(review.id)}
-                  type="button"
-                >
-                  {reportedReviewIds.includes(review.id)
-                    ? 'Reported'
-                    : 'Report review'}
-                </button>
+                {isCustomer && (
+                  <button
+                    className="mt-3 text-xs font-semibold text-slate-600 underline disabled:no-underline disabled:opacity-60"
+                    disabled={reportedReviewIds.includes(review.id)}
+                    onClick={() => void reportReview(review.id)}
+                    type="button"
+                  >
+                    {reportedReviewIds.includes(review.id)
+                      ? 'Reported'
+                      : 'Report review'}
+                  </button>
+                )}
               </li>
             ))}
           </ul>

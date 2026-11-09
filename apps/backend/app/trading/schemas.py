@@ -10,6 +10,14 @@ class WholesalePriceTierCreate(BaseModel):
     unit_price: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
 
 
+class TransferDestinationRead(BaseModel):
+    shop_id: UUID
+    shop_name: str
+    product_id: UUID
+    product_name: str
+    category_id: UUID
+
+
 class WholesaleListingCreate(BaseModel):
     product_id: UUID
     minimum_order_quantity: int = Field(ge=1, le=2_147_483_647)

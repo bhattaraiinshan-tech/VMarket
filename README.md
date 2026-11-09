@@ -47,6 +47,15 @@ PostgreSQL is available on `localhost:5432`; the MinIO S3 API and console are on
 Mailpit accepts SMTP on `localhost:1025` and its inbox UI is at `http://localhost:8025`. The credentials in
 `.env.example` are for local development only.
 
+For local email delivery, use `VMARKET_MAIL_HOST=localhost`, `VMARKET_MAIL_PORT=1025`,
+`VMARKET_MAIL_STARTTLS=false`, and `VMARKET_MAIL_FROM=no-reply@vendors-market.local`; leave
+`VMARKET_MAIL_USERNAME` and `VMARKET_MAIL_PASSWORD` empty. Mailpit captures verification and
+password-reset emails at `http://localhost:8025`; it does not deliver to real inboxes.
+Its Docker SMTP port is controlled separately by `VMARKET_MAILPIT_SMTP_PORT` (default `1025`).
+If you customize that port, match `VMARKET_MAIL_PORT` to it when using Mailpit.
+After changing mail settings, restart the backend and run `docker compose up -d mailpit`.
+Keep `VMARKET_WEB_BASE_URL` reachable from the device opening the email links.
+
 MinIO is built from a pinned official community source release because its published container images are no longer
 accessible. The first build downloads Go dependencies and can take several minutes. No MinIO subscription or license key
 is required. This frozen community release is for local development only; use maintained storage for production.
@@ -69,11 +78,34 @@ The API is available at `http://localhost:8000`; interactive OpenAPI documentati
 dependency readiness are reported at `/api/v1/health/live` and `/api/v1/health/ready`. Readiness checks PostgreSQL and
 authenticates to MinIO; a dependency failure returns HTTP 503 without disclosing connection details.
 
-Registration and password recovery email is sent through SMTP. The local Mailpit inbox lets you open verification and
-password-reset links without a third-party provider. Configure `VMARKET_MAIL_HOST`, `VMARKET_MAIL_PORT`,
+Registration and password recovery email is sent through SMTP or the Brevo HTTPS API. The local Mailpit inbox lets you open verification and
+password-reset links without a third-party provider. Open the password-reset link to choose a new password, then sign in
+again; the link expires after one hour. Configure `VMARKET_MAIL_HOST`, `VMARKET_MAIL_PORT`,
 `VMARKET_MAIL_USERNAME`, `VMARKET_MAIL_PASSWORD`, `VMARKET_MAIL_STARTTLS`, `VMARKET_MAIL_FROM`, and
 `VMARKET_WEB_BASE_URL` for the deployment's email provider and public web origin. Staging and production require a
-remote authenticated SMTP service using STARTTLS and an HTTPS web origin.
+authenticated Brevo HTTPS delivery or a remote authenticated SMTP service using STARTTLS, and an HTTPS web origin.
+
+To use Brevo instead of Mailpit, create a Brevo account, complete its onboarding,
+and configure a verified sender (authenticate your domain for reliable delivery).
+Set these values in the repository-root `.env`:
+
+```dotenv
+VMARKET_MAIL_PROVIDER=brevo
+# Replace with your sender approved in Brevo:
+VMARKET_MAIL_FROM=no-reply@yourdomain.com
+```
+
+Set `VMARKET_MAIL_PASSWORD` privately to your Brevo **API key**, not an SMTP key or another provider's key.
+Missing keys or senders prevent startup with an explicit configuration error.
+Restart the backend after saving both settings.
+This mode sends directly to `https://api.brevo.com/v3/smtp/email` with certificate verification;
+SMTP host, port, username, and STARTTLS settings are unused. HTTP/provider failures return
+an email-delivery error rather than reporting success. No automatic SMTP fallback is used.
+To switch back to Mailpit, set `VMARKET_MAIL_PROVIDER=smtp` and restore the local SMTP settings above.
+Check Brevo's transactional logs for delivery, rejection, and bounce events.
+API acceptance means the message was submitted, not that it has arrived in the recipient's inbox.
+Mailpit's Docker ports are independent and do not need to change when switching providers.
+Email links still use `VMARKET_WEB_BASE_URL`; use a public HTTPS origin for users outside your network.
 
 To provision the **sole platform owner**, privately configure `VMARKET_OWNER_EMAIL` to the creator's existing,
 active, email-verified account, then run this operator-only command after migration:
@@ -99,8 +131,13 @@ own **at most three shops**, counting inactive shops. Shop deletion and ownershi
 Protected API requests identify their context with `X-VMarket-Workspace: customer|vendor|admin` and, for shop-bound
 vendor actions, `X-VMarket-Shop-Id: <uuid>`. The server validates the session, profile, and resource ownership;
 headers never grant permissions. Missing context is rejected, and neither a mode nor the first owned shop is guessed.
-Public browsing and account-wide authentication/session/export operations are context-neutral. Vendor applications
-remain available as onboarding before approval. `/api/v1/vendor/shops` lists or creates shops; existing business
+Public browsing and account-wide authentication/session operations are context-neutral. Vendor applications and
+their private documents require Customer workspace, which remains available before vendor approval.
+`/api/v1/me/export` requires an explicitly selected workspace: Customer exports account metadata, the customer
+profile, addresses and onboarding applications; Vendor exports account metadata, the business profile and the
+explicitly selected owned shop; Admin exports only the owner's account metadata/binding. This is a profile export,
+not a transaction-history export, and it never combines workspaces.
+`/api/v1/vendor/shops` lists or creates shops without a shop selector; existing business
 endpoints operate on the explicitly selected shop. WebSocket connections use non-secret `workspace` and `shop_id`
 query selectors, with the same cookie/session authorization.
 
@@ -109,6 +146,23 @@ wholesale, and review responses require Vendor mode and the selected shop. Admin
 implicitly authorize customer/vendor actions. Messages, notifications, support, and live updates are scoped accordingly.
 Buying/reviewing your own shops (including wholesale between your own shops) is prohibited. Explicit stock transfers
 between distinct shops you own remain allowed.
+
+Workspace navigation is separated: Customer browsing/cart/orders and personal support; Vendor selected-shop
+catalog/fulfillment/reviews/promotions/trade/support; owner-only Admin account approvals and audit history at
+`/admin/accounts`, catalog moderation, communications/support queues, and operations/policies/investigations.
+Admin visits to personal support link to the platform queue without requesting personal tickets. Product purchase,
+wishlist and customer messaging controls require Customer workspace; owned-shop purchases and wholesale RFQs are
+blocked. Vendor stock transfers can select approved products in other active owned shops even without a wholesale
+listing, independently of supplier search. Existing inactive-shop access rules and update-moderation behavior are
+unchanged.
+
+Vendor fulfillment responses expose only that shop's items/financial events plus the order's delivery recipient,
+phone and address snapshot needed for shipping (not the customer's email/profile or other shops' fulfillment data).
+Vendor promotion enable/disable actions are restricted to the selected shop's vendor-funded promotions and audited.
+Fraud reports require Customer context or Vendor context with an explicitly selected owned shop; order targets must
+belong to the customer or contain a fulfillment for the selected shop. Reports retain the submitted workspace/shop.
+If registration commits but email delivery fails, the sign-in screen offers verification resend without recreating
+the account; password-reset delivery and recovery behavior remain unchanged.
 
 ## Phase 7: Administration and operations
 
@@ -192,6 +246,46 @@ Remove-Item Env:\VMARKET_MIGRATION_TEST_DATABASE_URL
 ```
 
 These tests isolate and clean up uniquely named schemas; never substitute a production database.
+
+Revision `0009_fraud_workspace_scope` requires operator review for **every** existing fraud report.
+No workspace or shop is inferred from roles or targets. Prepare a private file containing exactly the existing
+report IDs (an empty table needs no mapping):
+
+```json
+{
+  "reviewed_by": "00000000-0000-4000-8000-000000000004",
+  "reports": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "workspace": "customer",
+      "shop_id": null,
+      "reason": "Reviewed original customer report"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "workspace": "vendor",
+      "shop_id": "00000000-0000-4000-8000-000000000003",
+      "reason": "Reviewed selected-shop business report"
+    }
+  ]
+}
+```
+
+`reviewed_by` must identify the active, email-verified platform owner who approved the mappings.
+Vendor mappings must identify a shop owned by the reporter; customer mappings require that reporter's customer
+profile. Historical order reports must satisfy the same order-participation boundaries as new submissions.
+Invalid, missing, duplicated or stale mapping entries stop the migration before schema/data changes. With writers
+stopped and a verified backup, rehearse on an isolated copy before applying:
+
+```powershell
+alembic -c apps\backend\alembic.ini -x "fraud_workspace_map=C:\private\reviewed-fraud.json" upgrade head
+```
+
+If both revisions 0007 and 0009 need reconciliation, supply both `-x` arguments. Do not commit mapping files.
+Each mapping requires a review reason and appends an immutable reconciliation audit entry; prior audit rows are not
+changed. Existing report IDs, status, details and investigation history are preserved. Downgrading 0009 refuses any populated
+fraud-report table, since dropping scope would lose history. Validate on an isolated test database using
+`python -m pytest apps\backend\tests\test_fraud_workspace_migration.py -q` with the test database variable above.
 
 For local marketplace development, seed 10 approved vendor accounts and 20 approved sample products after migrating
 the database:

@@ -6,16 +6,135 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { StrictMode } from 'react';
 
 import IdentityPortal from './identity-portal';
 import WorkspaceSwitcher from './workspace-switcher';
+import { setWorkspaceUser } from '@/lib/workspace-state';
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  window.history.replaceState(null, '', '/');
 });
 
 describe('identity account controls', () => {
+  it('opens and submits the reset form from a reset link in strict mode', async () => {
+    window.history.replaceState(null, '', '/#reset=test-token');
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input) => {
+        const path = new URL(String(input), 'http://localhost:3000').pathname;
+        if (path.endsWith('/auth/password/reset')) {
+          return Response.json({
+            message:
+              'Your password has been reset. Sign in with your new password.',
+          });
+        }
+        return Response.json(
+          { error: { message: 'Not signed in' } },
+          { status: 401 },
+        );
+      });
+
+    render(
+      <StrictMode>
+        <IdentityPortal />
+      </StrictMode>,
+    );
+
+    const password = await screen.findByLabelText('New password');
+    expect(window.location.hash).toBe('');
+    fireEvent.change(password, { target: { value: 'new-password-123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Reset password' }));
+    expect(
+      await screen.findByText(
+        'Your password has been reset. Sign in with your new password.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          String(input).endsWith('/auth/password/reset') &&
+          init?.body ===
+            JSON.stringify({
+              token: 'test-token',
+              password: 'new-password-123',
+            }),
+      ),
+    ).toBe(true);
+    expect(
+      screen.getByRole('heading', { name: 'Welcome back' }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the reset form even when already signed in', async () => {
+    setWorkspaceUser({
+      id: 'user-1',
+      email: 'customer@example.com',
+      email_verified: true,
+      account_status: 'active',
+      roles: ['customer'],
+      vendor_profile: null,
+      profile: { full_name: 'Test Customer', phone: null },
+    });
+    window.history.replaceState(null, '', '/#reset=test-token');
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = new URL(String(input), 'http://localhost:3000').pathname;
+      if (path.endsWith('/auth/password/reset')) {
+        return Response.json({ message: 'Password reset complete.' });
+      }
+      return Response.json([]);
+    });
+
+    render(<IdentityPortal />);
+
+    fireEvent.change(await screen.findByLabelText('New password'), {
+      target: { value: 'new-password-123' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Reset password' }));
+    expect(
+      await screen.findByText('Password reset complete.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Welcome back' }),
+    ).toBeInTheDocument();
+  });
+
+  it('handles a reset link opened on the already mounted page and shows reset errors', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = new URL(String(input), 'http://localhost:3000').pathname;
+      if (path.endsWith('/auth/password/reset')) {
+        return Response.json(
+          {
+            error: {
+              message: 'The password reset link is invalid or expired.',
+            },
+          },
+          { status: 400 },
+        );
+      }
+      return Response.json(
+        { error: { message: 'Not signed in' } },
+        { status: 401 },
+      );
+    });
+    render(<IdentityPortal />);
+    window.history.replaceState(null, '', '/?source=email#reset=expired-token');
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+
+    fireEvent.change(await screen.findByLabelText('New password'), {
+      target: { value: 'new-password-123' },
+    });
+    expect(window.location.search).toBe('?source=email');
+    expect(window.location.hash).toBe('');
+    fireEvent.click(screen.getByRole('button', { name: 'Reset password' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The password reset link is invalid or expired.',
+    );
+    expect(screen.getByLabelText('New password')).toBeInTheDocument();
+  });
+
   it('updates an owned address and revokes another active session', async () => {
     let address = {
       id: 'address-1',

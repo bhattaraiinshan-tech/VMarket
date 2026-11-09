@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 
 import { Cart, DeliveryAddress, Order, requestApi } from '@/lib/api';
+import { createUuid } from '@/lib/uuid';
 
 function addNprAmounts(...amounts: string[]): string {
   let total = '0';
@@ -145,18 +146,18 @@ export default function CartPage() {
     setBusy(true);
     setError('');
     const normalizedCode = promotionCode.trim().toUpperCase();
-    if (
-      !idempotencyKey.current ||
-      idempotencyKey.current.addressId !== addressId ||
-      idempotencyKey.current.promotionCode !== normalizedCode
-    ) {
-      idempotencyKey.current = {
-        key: crypto.randomUUID(),
-        addressId,
-        promotionCode: normalizedCode,
-      };
-    }
     try {
+      if (
+        !idempotencyKey.current ||
+        idempotencyKey.current.addressId !== addressId ||
+        idempotencyKey.current.promotionCode !== normalizedCode
+      ) {
+        idempotencyKey.current = {
+          key: createUuid(),
+          addressId,
+          promotionCode: normalizedCode,
+        };
+      }
       const order = await requestApi<Order>('/me/checkout', {
         method: 'POST',
         body: JSON.stringify({

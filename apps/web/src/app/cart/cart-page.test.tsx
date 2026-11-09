@@ -66,80 +66,153 @@ describe('cart checkout', () => {
     expect(screen.queryByText('Your cart is empty')).not.toBeInTheDocument();
   });
 
-  it('updates the cart and submits COD checkout using a saved address', async () => {
-    let orderPlaced = false;
+  it.each(['native', 'LAN HTTP'])(
+    'submits COD checkout using %s UUID generation',
+    async (mode) => {
+      let orderPlaced = false;
+      const fetchMock = vi
+        .spyOn(globalThis, 'fetch')
+        .mockImplementation(
+          async (input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            if (url.endsWith('/me/cart')) {
+              return Response.json(
+                orderPlaced
+                  ? { items: [], item_count: 0, subtotal: '0.00' }
+                  : cart,
+              );
+            }
+            if (url.endsWith('/me/addresses')) return Response.json([address]);
+            if (url.endsWith('/me/checkout')) {
+              orderPlaced = true;
+              return Response.json({
+                id: 'order-1',
+                order_number: 'VM-20261104-ABCDE12345',
+                invoice_number: 'INV-VM-20261104-ABCDE12345',
+                status: 'pending',
+                payment_method: 'cash_on_delivery',
+                shipping_address: {
+                  recipient_name: 'A Customer',
+                  street_address: '1 Market Road',
+                  city: 'Kathmandu',
+                  province: 'Bagmati',
+                },
+                subtotal: '100.50',
+                shipping_total: '100.00',
+                total: '200.50',
+                created_at: '2026-11-04T00:00:00Z',
+                updated_at: '2026-11-04T00:00:00Z',
+                fulfillments: [],
+              });
+            }
+            if (url.endsWith('/me/cart/items/cart-item-1'))
+              return Response.json(cart);
+            throw new Error(
+              `Unexpected request: ${url} ${init?.method ?? 'GET'}`,
+            );
+          },
+        );
+      vi.stubGlobal(
+        'crypto',
+        mode === 'native'
+          ? { randomUUID: () => 'stable-checkout-idempotency-key' }
+          : { getRandomValues: (bytes: Uint8Array) => bytes.fill(255) },
+      );
+      render(<CartPage />);
+
+      expect(await screen.findByText('Woven Basket')).toBeInTheDocument();
+      expect(screen.getByText('NPR 200.50')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Place order' }));
+
+      expect(
+        await screen.findByText(/Order VM-20261104-ABCDE12345 placed/),
+      ).toBeInTheDocument();
+      await waitFor(() =>
+        expect(fetchMock).toHaveBeenCalledWith(
+          expect.stringContaining('/me/checkout'),
+          expect.objectContaining({
+            method: 'POST',
+            body: expect.stringContaining(
+              '"payment_method":"cash_on_delivery"',
+            ),
+          }),
+        ),
+      );
+      const checkoutRequest = fetchMock.mock.calls.find(([input]) =>
+        String(input).endsWith('/me/checkout'),
+      );
+      expect(checkoutRequest).toBeDefined();
+      expect(JSON.parse(String(checkoutRequest?.[1]?.body))).toEqual({
+        address_id: 'address-1',
+        payment_method: 'cash_on_delivery',
+        idempotency_key:
+          mode === 'native'
+            ? 'stable-checkout-idempotency-key'
+            : 'ffffffff-ffff-4fff-bfff-ffffffffffff',
+        promotion_code: null,
+      });
+    },
+  );
+
+  it('shows random generation failures and re-enables checkout', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
-      .mockImplementation(
-        async (input: RequestInfo | URL, init?: RequestInit) => {
-          const url = String(input);
-          if (url.endsWith('/me/cart')) {
-            return Response.json(
-              orderPlaced
-                ? { items: [], item_count: 0, subtotal: '0.00' }
-                : cart,
-            );
-          }
-          if (url.endsWith('/me/addresses')) return Response.json([address]);
-          if (url.endsWith('/me/checkout')) {
-            orderPlaced = true;
-            return Response.json({
-              id: 'order-1',
-              order_number: 'VM-20261104-ABCDE12345',
-              invoice_number: 'INV-VM-20261104-ABCDE12345',
-              status: 'pending',
-              payment_method: 'cash_on_delivery',
-              shipping_address: {
-                recipient_name: 'A Customer',
-                street_address: '1 Market Road',
-                city: 'Kathmandu',
-                province: 'Bagmati',
-              },
-              subtotal: '100.50',
-              shipping_total: '100.00',
-              total: '200.50',
-              created_at: '2026-11-04T00:00:00Z',
-              updated_at: '2026-11-04T00:00:00Z',
-              fulfillments: [],
-            });
-          }
-          if (url.endsWith('/me/cart/items/cart-item-1'))
-            return Response.json(cart);
-          throw new Error(
-            `Unexpected request: ${url} ${init?.method ?? 'GET'}`,
-          );
-        },
+      .mockImplementation(async (input) =>
+        Response.json(String(input).endsWith('/me/cart') ? cart : [address]),
       );
-    vi.stubGlobal('crypto', {
-      randomUUID: () => 'stable-checkout-idempotency-key',
-    });
+    vi.stubGlobal('crypto', undefined);
     render(<CartPage />);
 
-    expect(await screen.findByText('Woven Basket')).toBeInTheDocument();
-    expect(screen.getByText('NPR 200.50')).toBeInTheDocument();
+    await screen.findByText('Woven Basket');
     fireEvent.click(screen.getByRole('button', { name: 'Place order' }));
 
-    expect(
-      await screen.findByText(/Order VM-20261104-ABCDE12345 placed/),
-    ).toBeInTheDocument();
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining('/me/checkout'),
-        expect.objectContaining({
-          method: 'POST',
-          body: expect.stringContaining('"payment_method":"cash_on_delivery"'),
-        }),
-      ),
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Secure random generation is unavailable',
     );
-    const checkoutRequest = fetchMock.mock.calls.find(([input]) =>
+    expect(screen.getByRole('button', { name: 'Place order' })).toBeEnabled();
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith('/me/checkout'),
+      ),
+    ).toBe(false);
+  });
+
+  it('reuses the LAN HTTP idempotency key after a failed checkout', async () => {
+    const getRandomValues = vi.fn((bytes: Uint8Array) => bytes.fill(255));
+    vi.stubGlobal('crypto', { getRandomValues });
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input) => {
+        if (String(input).endsWith('/me/checkout')) {
+          return Response.json(
+            {
+              error: { code: 'unavailable', message: 'Please retry checkout.' },
+            },
+            { status: 503 },
+          );
+        }
+        return Response.json(
+          String(input).endsWith('/me/cart') ? cart : [address],
+        );
+      });
+    render(<CartPage />);
+
+    await screen.findByText('Woven Basket');
+    fireEvent.click(screen.getByRole('button', { name: 'Place order' }));
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button', { name: 'Place order' }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.filter(([input]) =>
+          String(input).endsWith('/me/checkout'),
+        ),
+      ).toHaveLength(2);
+    });
+    const requests = fetchMock.mock.calls.filter(([input]) =>
       String(input).endsWith('/me/checkout'),
     );
-    expect(checkoutRequest).toBeDefined();
-    expect(JSON.parse(String(checkoutRequest?.[1]?.body))).toEqual({
-      address_id: 'address-1',
-      payment_method: 'cash_on_delivery',
-      idempotency_key: 'stable-checkout-idempotency-key',
-      promotion_code: null,
-    });
+    expect(requests[0][1]?.body).toBe(requests[1][1]?.body);
+    expect(getRandomValues).toHaveBeenCalledOnce();
   });
 });

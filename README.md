@@ -330,6 +330,10 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+For a mobile device on the same network, open `http://<computer-LAN-IP>:3000`.
+Checkout uses secure random bytes when the browser's `crypto.randomUUID` is
+unavailable on local-network HTTP. Use HTTPS for deployed environments.
+
 The marketplace is at `/marketplace`; customers can add products to `/cart`, check out with a saved delivery address,
 and view progress and invoices at `/orders`. Vendor shop and product management is at `/vendor`, with fulfillment
 management at `/vendor/orders`, reviews at `/vendor/reviews`, and wholesale, RFQ, purchase order, stock transfer, and

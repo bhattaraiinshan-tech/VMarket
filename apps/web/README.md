@@ -34,6 +34,32 @@ provider supplies a skip-to-content link and keeps protected page content behind
 the existing workspace and shop checks. List screens should distinguish loading
 and failed requests from a successfully loaded empty list.
 
+### Messages
+
+`/messages` and `/messages/[conversationId]` share a navy-and-blue messenger:
+searchable conversation history and a live chat panel spanning the available
+width, with navigation kept in the top header rather than a left sidebar.
+On phones, conversation links open the full-width thread with an All messages
+back link. Search filters the latest 100 conversations returned by the existing
+API; the thread shows its latest 200 messages, grouped by date.
+
+Names, previews, unread counts, dates, and read receipts come from the API.
+Initials are used because the conversation contract does not include avatars.
+The live indicator describes the socket connection, not participant presence;
+verification badges and response-time claims are not inferred. Read receipts
+reflect the last history refresh, not a separate live read-receipt event.
+Opening a thread marks incoming messages read through the existing history
+endpoint. Drafts, sockets, and pending responses are discarded on conversation,
+account, workspace, or shop changes.
+
+Compose starts from a product page in Customer workspace; Vendor workspace
+receives customer conversations for the explicitly selected shop. Text sending
+supports up to 5,000 characters, a small keyboard-accessible emoji picker, Enter
+to send, and Shift + Enter for a newline. A customer thread with an actual order
+reference links to that order. Calls, attachments, and image uploads are disabled
+and identified as unavailable; they require backend support before enablement.
+The decorative landscape is an original local SVG, not mock account data.
+
 ## Desktop and mobile development
 
 `npm run dev` listens on all interfaces. Open `http://localhost:3000` on the

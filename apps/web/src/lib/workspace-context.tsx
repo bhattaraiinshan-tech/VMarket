@@ -220,7 +220,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       </a>
       <WorkspaceSwitcher
         key={`${context.user?.id}:${mode}:${context.shopId}`}
-        accountHeader={path === '/' && mode === 'customer'}
+        accountHeader={
+          mode === 'customer' &&
+          (path === '/' ||
+            path === '/messages' ||
+            path.startsWith('/messages/'))
+        }
       />
       <div id="main-content" tabIndex={-1}>
         {blocked ? (

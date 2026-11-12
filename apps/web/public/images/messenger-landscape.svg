@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="700" viewBox="0 0 1000 700" fill="none">
+  <defs>
+    <linearGradient id="sky" x2="0" y2="1">
+      <stop stop-color="#e7edff"/>
+      <stop offset="1" stop-color="#c5d8f6"/>
+    </linearGradient>
+    <linearGradient id="mountain" x2="0" y2="1">
+      <stop stop-color="#a9bfdf"/>
+      <stop offset="1" stop-color="#d7e4f6"/>
+    </linearGradient>
+    <g id="temple" stroke="#6884ac" stroke-width="2" stroke-linejoin="round">
+      <path d="M37 190h126v12H37z" fill="#b9c9e2"/>
+      <path d="M48 139h104v51H48z" fill="#e2c6af"/>
+      <path d="M58 90h84v48H58z" fill="#dfc4af"/>
+      <path d="M69 51h62v39H69z" fill="#ecd7c2"/>
+      <path d="m100 7 6 24 28 20 24 3-10 8H52l-10-8 24-3 28-20 6-24Z" fill="#b5836e"/>
+      <path d="m72 72-15 17-28 9 10 8h122l10-8-28-9-15-17" fill="#ba8973"/>
+      <path d="m57 119-18 17-30 9 13 10h156l13-10-30-9-18-17" fill="#b1816e"/>
+      <path d="M89 164h22v26H89zM66 164v19M134 164v19M79 111v17M121 111v17M100 70v13" stroke="#6b6480" stroke-width="5"/>
+      <path d="M19 157h162M39 108h122M54 64h92" stroke="#f4e3c9"/>
+    </g>
+    <g id="house" stroke="#8b9db9" stroke-width="2">
+      <path d="M5 30 55 3l50 27H5Z" fill="#c6a9a3"/>
+      <path d="M15 30h80v53H15z" fill="#e8d8ca"/>
+      <path d="M46 52h18v31H46zM28 42v14M81 42v14" stroke="#92a5c1" stroke-width="7"/>
+    </g>
+  </defs>
+  <path fill="url(#sky)" d="M0 0h1000v700H0z"/>
+  <circle cx="200" cy="128" r="52" fill="#fff2db"/>
+  <path d="m-60 370 180-175 63 58 147-204 92 119 92-82 149 175 93-76 244 206v144H-60Z" fill="url(#mountain)"/>
+  <path d="m183 253 147-204 92 119-60-29-32-53-49 90-29-9-69 86Zm340-157 140 165-62-29-35-63-31 6-12-79ZM720 265l36-80 120 102-63-27-36-41-57 46Z" fill="#f7faff"/>
+  <path d="m0 452 160-85 122 39 160-95 194 82 166-37 198 61v283H0Z" fill="#b5cbdc"/>
+  <path d="m0 524 156-82 134 76 189-88 182 74 164-76 175 81v191H0Z" fill="#a5c1cd"/>
+  <g opacity=".8">
+    <use href="#house" x="35" y="426"/>
+    <use href="#house" x="166" y="395" transform="rotate(-2 220 450)"/>
+    <use href="#house" x="325" y="458"/>
+    <use href="#house" x="611" y="410"/>
+    <use href="#house" x="829" y="435"/>
+    <use href="#temple" x="692" y="237" transform="rotate(1 790 400)"/>
+  </g>
+  <path d="M0 613c150-45 229-5 365-26s206-80 350-29 209-12 285-2v144H0Z" fill="#8fadb4"/>
+  <use href="#temple" x="390" y="383" transform="rotate(-1 490 500)"/>
+  <use href="#temple" x="100" y="469"/>
+  <use href="#temple" x="735" y="464"/>
+  <g stroke="#73959e" stroke-width="6" stroke-linecap="round">
+    <path d="M55 625v-87m0 51-23-23m23 2 24-26M355 662v-94m0 55-29-27m29 7 27-25M672 671v-112m0 57-30-33m30 7 30-22M950 642v-93m0 56-23-25m23-1 24-22"/>
+  </g>
+  <path d="M0 687h1000M0 695h1000" stroke="#d7e3ed" stroke-width="3"/>
+</svg>

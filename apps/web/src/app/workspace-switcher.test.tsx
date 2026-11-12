@@ -36,10 +36,23 @@ function installFetch(
         );
       }
       if (url.endsWith('/messages')) return Response.json([]);
+      if (url.endsWith('/me/conversations')) return Response.json([]);
       if (url.includes('/me/conversations/'))
         return Response.json({
           id: 'conversation-1',
           current_user_id: testUser.id,
+          shop_id: 'shop-1',
+          shop_owner_id: 'owner-1',
+          shop_name: 'Local shop',
+          customer_id: testUser.id,
+          customer_name: 'Test customer',
+          product_id: null,
+          product_name: null,
+          order_id: null,
+          unread_count: 0,
+          last_message: null,
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
         });
       throw new Error(`Unexpected request: ${url}`);
     });

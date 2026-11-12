@@ -26,11 +26,20 @@ export default function ProductDetails({ slug }: { slug: string }) {
   const [reportedReviewIds, setReportedReviewIds] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
   const [selectedVariantId, setSelectedVariantId] = useState('');
+  const [selectedImageId, setSelectedImageId] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [cartMessage, setCartMessage] = useState('');
   const selectedVariant = product?.variants.find(
     (variant) => variant.id === selectedVariantId,
   );
+  const selectedImage =
+    product?.images.find((image) => image.id === selectedImageId) ??
+    product?.images[0];
+  const availableStock = product
+    ? product.variants.length > 0
+      ? (selectedVariant?.stock ?? 0)
+      : product.stock
+    : 0;
   const isCustomer = workspace === 'customer' && !!user;
   const ownShop =
     !!product && !!user?.owned_shop_ids?.includes(product.shop_id);
@@ -42,6 +51,7 @@ export default function ProductDetails({ slug }: { slug: string }) {
         if (!active) return;
         setProduct(result);
         setSelectedVariantId(result.variants[0]?.id ?? '');
+        setSelectedImageId(result.images[0]?.id ?? '');
         const offers = await requestApi<ProductPage>(
           `/catalog/products?category_id=${encodeURIComponent(result.category_id)}&sort=price_asc&page_size=8`,
         );
@@ -55,17 +65,29 @@ export default function ProductDetails({ slug }: { slug: string }) {
         );
         if (active) setReviews(productReviews);
       })
-      .catch((cause: unknown) =>
-        setError(
-          cause instanceof Error
-            ? cause.message
-            : 'Product could not be loaded.',
-        ),
-      );
+      .catch((cause: unknown) => {
+        if (active && !(cause instanceof DOMException && cause.name === 'AbortError'))
+          setError(cause instanceof Error ? cause.message : 'Product could not be loaded.');
+      });
     return () => {
       active = false;
     };
   }, [slug]);
+
+  useEffect(() => {
+    if (!isCustomer || !product) return;
+    const controller = new AbortController();
+    void requestApi<Product[]>('/me/wishlist', { signal: controller.signal })
+      .then((items) => {
+        if (!controller.signal.aborted)
+          setSaved(items.some((item) => item.id === product.id));
+      })
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted && !(cause instanceof DOMException && cause.name === 'AbortError'))
+          setError(cause instanceof Error ? cause.message : 'Wishlist could not be loaded.');
+      });
+    return () => controller.abort();
+  }, [isCustomer, product]);
 
   async function toggleWishlist() {
     if (!product) return;
@@ -192,24 +214,39 @@ export default function ProductDetails({ slug }: { slug: string }) {
           {error}
         </p>
       )}
-      <section className="mt-5 grid items-start gap-6 lg:grid-cols-2 lg:gap-8">
-        <div className="grid gap-3 sm:grid-cols-2">
-          {product.images.length ? (
-            product.images.map((image) => (
+      <div className="mt-5 grid items-start gap-6 lg:grid-cols-2">
+      <section className="contents">
+        <div>
+          {selectedImage ? (
+            <>
               <div
-                aria-label={image.alt_text || product.name}
-                className="min-h-72 rounded-2xl bg-slate-100 bg-cover bg-center"
-                key={image.id}
+                aria-label={selectedImage.alt_text || product.name}
+                className="aspect-[1.55] rounded-2xl bg-slate-100 bg-contain bg-center bg-no-repeat"
                 role="img"
                 style={{
-                  backgroundImage: `url("${browserStorageUrl(image.url)}")`,
+                  backgroundImage: `url("${browserStorageUrl(selectedImage.url)}")`,
                 }}
               />
-            ))
+              {product.images.length > 1 && (
+                <div aria-label="Product images" className="mt-3 flex flex-wrap gap-2" role="group">
+                  {product.images.map((image, index) => (
+                    <button
+                      aria-label={`Show image ${index + 1}: ${image.alt_text || product.name}`}
+                      aria-pressed={image.id === selectedImage.id}
+                      className={`h-16 w-16 rounded-lg border-2 bg-slate-100 bg-contain bg-center bg-no-repeat ${image.id === selectedImage.id ? 'border-emerald-800' : 'border-transparent'}`}
+                      key={image.id}
+                      onClick={() => setSelectedImageId(image.id)}
+                      style={{ backgroundImage: `url("${browserStorageUrl(image.url)}")` }}
+                      type="button"
+                    />
+                  ))}
+                </div>
+              )}
+            </>
           ) : (
             <div
               aria-hidden="true"
-              className="flex min-h-72 items-center justify-center rounded-2xl bg-emerald-100 text-6xl font-semibold text-emerald-800 sm:col-span-2"
+              className="flex aspect-[1.55] items-center justify-center rounded-2xl bg-emerald-100 text-6xl font-semibold text-emerald-800"
             >
               {product.name.slice(0, 1)}
             </div>
@@ -223,30 +260,17 @@ export default function ProductDetails({ slug }: { slug: string }) {
           <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">
             {product.name}
           </h1>
-          <p className="mt-4 text-2xl font-bold text-slate-950">
-            NPR {selectedVariant?.price ?? product.price}
-          </p>
-          <p className="mt-2 text-sm text-slate-600">
-            {product.available ? 'In stock' : 'Currently unavailable'}
-          </p>
-          <p className="mt-6 whitespace-pre-wrap leading-7 text-slate-700">
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <p className="text-2xl font-bold text-slate-950">NPR {selectedVariant?.price ?? product.price}</p>
+            <p className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-900">
+              {product.available && availableStock > 0 ? 'In stock' : 'Currently unavailable'}
+            </p>
+          </div>
+          <p className="mt-4 whitespace-pre-wrap leading-7 text-slate-700">
             {product.description}
           </p>
-          <dl className="mt-6 grid gap-2 text-sm sm:grid-cols-2">
-            <div>
-              <dt className="text-slate-500">SKU</dt>
-              <dd className="font-medium text-slate-900">{product.sku}</dd>
-            </div>
-            {Object.entries(product.attributes).map(([key, value]) => (
-              <div key={key}>
-                <dt className="capitalize text-slate-500">
-                  {key.replaceAll('_', ' ')}
-                </dt>
-                <dd className="font-medium text-slate-900">{value}</dd>
-              </div>
-            ))}
-          </dl>
-          <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-6">
+          <div className="mt-6 grid gap-5 border-t border-slate-100 pt-6 sm:grid-cols-2">
+          <div className="flex flex-col items-start gap-3">
             {product.variants.length > 0 && (
               <label className="text-sm font-semibold text-slate-800">
                 Option
@@ -291,7 +315,8 @@ export default function ProductDetails({ slug }: { slug: string }) {
                 disabled={
                   ownShop ||
                   !product.available ||
-                  quantity < 1 ||
+                  !Number.isInteger(quantity) ||
+                  quantity < 1 || quantity > availableStock ||
                   (product.variants.length > 0 &&
                     (product.variants.find(
                       (item) => item.id === selectedVariantId,
@@ -330,6 +355,18 @@ export default function ProductDetails({ slug }: { slug: string }) {
                 instead.
               </p>
             )}
+            {isCustomer && (
+              <Link
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800"
+                href="/cart"
+              >
+                View cart
+              </Link>
+            )}
+          </div>
+          <div className="flex flex-col items-start gap-3 rounded-xl border border-slate-200 p-4">
+            <p className="text-sm text-slate-600">Vendor</p>
+            <p className="font-semibold text-slate-950">{product.shop_name}</p>
             <Link
               className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800"
               href={`/shops/${product.shop_slug}`}
@@ -345,14 +382,7 @@ export default function ProductDetails({ slug }: { slug: string }) {
                 Message vendor
               </button>
             )}
-            {isCustomer && (
-              <Link
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800"
-                href="/cart"
-              >
-                View cart
-              </Link>
-            )}
+          </div>
           </div>
           {cartMessage && (
             <p className="mt-3 text-sm text-emerald-800" role="status">
@@ -386,15 +416,25 @@ export default function ProductDetails({ slug }: { slug: string }) {
           )}
         </div>
       </section>
+      <div className="min-w-0">
+      <details className="rounded-2xl border border-slate-200 bg-white p-5">
+        <summary className="cursor-pointer font-bold text-slate-950">Product details</summary>
+        <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+          <div><dt className="text-slate-500">SKU</dt><dd className="font-medium text-slate-900">{product.sku}</dd></div>
+          {Object.entries(product.attributes).map(([key, value]) => (
+            <div key={key}><dt className="capitalize text-slate-500">{key.replaceAll('_', ' ')}</dt><dd className="font-medium text-slate-900">{value}</dd></div>
+          ))}
+        </dl>
+      </details>
       <FraudReportForm targetType="product" targetId={product.id} />
       <section
         aria-labelledby="product-reviews-heading"
-        className="mt-12 border-t border-slate-200 pt-8"
+        className="mt-4 rounded-2xl border border-slate-200 bg-white p-5"
       >
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2
-              className="text-2xl font-bold text-slate-950"
+              className="text-lg font-bold text-slate-950"
               id="product-reviews-heading"
             >
               Verified-purchase reviews
@@ -478,18 +518,22 @@ export default function ProductDetails({ slug }: { slug: string }) {
           </p>
         )}
       </section>
+      </div>
       {related.length > 0 && (
-        <section className="mt-14 border-t border-slate-200 pt-8">
-          <h2 className="text-2xl font-bold text-slate-950">
+        <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5">
+          <h2 className="text-lg font-bold text-slate-950">
             More offers in this category
           </h2>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
             {related.map((item) => (
               <Link
                 className="rounded-xl border border-slate-200 bg-white p-4 hover:border-emerald-700"
                 href={`/marketplace/${item.slug}`}
                 key={item.id}
               >
+                {item.images[0] && (
+                  <div aria-label={item.images[0].alt_text || item.name} role="img" className="mb-3 aspect-square rounded-lg bg-slate-100 bg-contain bg-center bg-no-repeat" style={{ backgroundImage: `url("${browserStorageUrl(item.images[0].url)}")` }} />
+                )}
                 <p className="font-semibold text-slate-900">{item.name}</p>
                 <p className="mt-2 font-bold text-slate-900">
                   NPR {item.price}
@@ -500,6 +544,7 @@ export default function ProductDetails({ slug }: { slug: string }) {
           </div>
         </section>
       )}
+      </div>
     </main>
   );
 }

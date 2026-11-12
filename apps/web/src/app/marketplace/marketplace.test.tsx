@@ -95,6 +95,20 @@ afterEach(() => {
 
 describe('marketplace', () => {
   beforeEach(() => installTestWorkspace());
+  it('keeps marketplace content and shop discovery without a shortcut rail', async () => {
+    installFetchMock();
+    render(<Marketplace />);
+    expect(await screen.findByText('Handwoven Basket')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('navigation', { name: 'Marketplace shortcuts' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Find shops near you' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: "Vendor's Market" }),
+    ).toHaveAttribute('href', '/');
+  });
   it('applies a search submitted from the account header', async () => {
     const fetchMock = installFetchMock();
     render(
@@ -177,6 +191,67 @@ describe('marketplace', () => {
         name: 'Saved: Handwoven Basket',
       }),
     ).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('shows real result counts and sorts without applying unsubmitted filters', async () => {
+    const fetchMock = installFetchMock();
+    render(<Marketplace />);
+    expect(
+      await screen.findByText('Showing 1–1 of 1 products'),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('City'), {
+      target: { value: 'Pokhara' },
+    });
+    fireEvent.change(screen.getByLabelText('Sort by'), {
+      target: { value: 'price_asc' },
+    });
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining(
+          '/catalog/products?page=1&page_size=24&sort=price_asc',
+        ),
+        expect.anything(),
+      ),
+    );
+    const calls = fetchMock.mock.calls.filter(([url]) =>
+      String(url).includes('/catalog/products?'),
+    );
+    expect(String(calls[calls.length - 1][0])).not.toContain('city=');
+  });
+
+  it('keeps results visible when unchanged filters are submitted', async () => {
+    installFetchMock();
+    render(<Marketplace />);
+    await screen.findByText('Handwoven Basket');
+    fireEvent.click(screen.getByRole('button', { name: 'Search products' }));
+    expect(screen.getByText('Handwoven Basket')).toBeInTheDocument();
+    expect(screen.queryByText('Loading products…')).not.toBeInTheDocument();
+  });
+
+  it('collapses and reopens filters without losing the draft or blocking sorting', async () => {
+    const fetchMock = installFetchMock();
+    render(<Marketplace />);
+    await screen.findByText('Handwoven Basket');
+    const filters = screen.getByText('Filters');
+    const search = screen.getByRole('textbox', { name: 'Search' });
+    fireEvent.change(search, { target: { value: 'basket' } });
+
+    fireEvent.click(filters);
+    expect(search).not.toBeVisible();
+    expect(screen.getByText('Handwoven Basket')).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Sort by'), {
+      target: { value: 'price_asc' },
+    });
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('sort=price_asc'),
+        expect.anything(),
+      ),
+    );
+
+    fireEvent.click(filters);
+    expect(search).toBeVisible();
+    expect(search).toHaveValue('basket');
   });
 
   it('discovers nearby shops using coordinates', async () => {

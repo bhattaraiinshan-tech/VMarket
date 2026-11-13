@@ -9,7 +9,8 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.catalog.models import Product, ProductVariant, Shop
+from app.catalog.models import Product, ProductImage, ProductVariant, Shop
+from app.catalog.urls import public_object_url
 from app.core.errors import APIError
 from app.db.session import get_session
 from app.identity.dependencies import (
@@ -68,12 +69,22 @@ async def _cart_item_read(session: AsyncSession, item: CartItem) -> CartItemRead
         )
     price = variant.price if variant else product.price
     stock = variant.stock if variant else product.stock
+    image = await session.scalar(
+        select(ProductImage)
+        .where(ProductImage.product_id == product.id)
+        .order_by(ProductImage.sort_order, ProductImage.created_at)
+        .limit(1)
+    )
     return CartItemRead(
         id=item.id,
         product_id=product.id,
         variant_id=variant.id if variant else None,
         product_name=product.name,
+        product_slug=product.slug,
         variant_name=variant.name if variant else None,
+        sku=variant.sku if variant else product.sku,
+        image_url=public_object_url(image.object_name) if image else None,
+        image_alt=(image.alt_text or product.name) if image else product.name,
         shop_id=shop.id,
         shop_name=shop.name,
         unit_price=price,

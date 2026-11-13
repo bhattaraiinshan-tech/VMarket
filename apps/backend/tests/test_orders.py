@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.catalog.models import CatalogCategory, Product, ProductVariant, Shop
+from app.catalog.models import CatalogCategory, Product, ProductImage, ProductVariant, Shop
 from app.db.base import Base
 from app.db.session import get_session
 from app.identity.models import (
@@ -451,6 +451,35 @@ async def _place_order(
 
 
 @pytest.mark.asyncio
+async def test_cart_items_expose_primary_product_image(orders_client: OrdersClient) -> None:
+    client, factory, ids = orders_client
+    async with factory() as session:
+        session.add_all(
+            [
+                ProductImage(
+                    product_id=ids["product1"],
+                    object_name="products/basket-back.jpg",
+                    alt_text="Basket back",
+                    sort_order=1,
+                ),
+                ProductImage(
+                    product_id=ids["product1"],
+                    object_name="products/basket front.jpg",
+                    alt_text="",
+                    sort_order=0,
+                ),
+            ]
+        )
+        await session.commit()
+    await _add_cart_item(client, ids["product1"], 1)
+
+    item = (await client.get("/api/v1/me/cart")).json()["items"][0]
+
+    assert item["image_url"].endswith("/products/basket%20front.jpg")
+    assert item["image_alt"] == "Woven Basket"
+
+
+@pytest.mark.asyncio
 async def test_checkout_splits_vendor_orders_reserves_stock_and_is_idempotent(
     orders_client: OrdersClient,
 ) -> None:
@@ -466,6 +495,12 @@ async def test_checkout_splits_vendor_orders_reserves_stock_and_is_idempotent(
     assert cart.status_code == 200
     assert cart.json()["item_count"] == 3
     assert cart.json()["subtotal"] == "250.60"
+    basket, cup = cart.json()["items"]
+    assert basket["sku"] == "BASKET-ORDERS"
+    assert basket["product_slug"] == "woven-basket-orders"
+    assert basket["image_url"] is None
+    assert basket["image_alt"] == "Woven Basket"
+    assert cup["sku"] == "CUP-ORDERS-BLUE"
 
     response = await _place_order(client, ids["address"])
     assert response.status_code == 201, response.text

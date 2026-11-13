@@ -77,6 +77,8 @@ desktop, with a horizontal thumbnail strip below the image on smaller screens.
 The compact Store / Account / My Bag header retains Customer workspace selection
 and navigation; Vendor and Admin keep their existing workspace/shop controls.
 The bag count is loaded from the cart API and refreshed from add-to-cart responses.
+For customers, My Bag opens the cart drawer, and a successful addition opens it
+with the returned cart so no extra request is needed.
 
 The gallery, header, variant options, and information tabs are reusable components
 in `src/app/marketplace/[slug]/product-presentation.tsx`. Size, color, and other
@@ -93,6 +95,39 @@ missing fields as Not provided. Shipping copy reflects existing per-shop fees
 and cash on delivery; return eligibility remains subject to current backend
 policy. Real NPR pricing, own-shop restrictions, wishlist, vendor messaging,
 fraud reports, reviews, and related products remain connected to existing APIs.
+
+### Cart
+
+`/cart` uses a two-column desktop layout: cart items (about 70%) beside a sticky
+order summary (about 30%), stacking on smaller screens. Modules in `src/app/cart/`:
+
+- `use-cart.ts` holds cart state shared by the page and drawer. Quantity, remove,
+  and save-for-later requests run one at a time; stale responses are discarded.
+- `cart-components.tsx` provides line items (thumbnail, option, SKU, seller,
+  quantity stepper, line total, Remove, Save for later), the per-shop delivery
+  notice, and checkout assurances.
+- `order-summary.tsx` shows subtotal, delivery, promotion code, delivery address,
+  estimated total, and the Place order action.
+- `cart-drawer.tsx` is the slide-out cart opened from the catalog View cart and
+  product My Bag buttons. It is a modal dialog with focus trapping, Escape and
+  backdrop closing, focus restoration, scroll locking, and reduced-motion support.
+  It closes when the workspace or account changes. Its Checkout link opens `/cart`.
+- `saved-for-later.tsx` lists wishlist products below the cart.
+- `cart-money.ts` performs NPR arithmetic in integer minor units.
+
+Quantities are limited to 1–50 and to available stock; invalid typed values are
+rejected without a request. Save for later adds the product to the wishlist, then
+removes the cart item; if removal fails, the partial result is reported. Cart
+items include `product_slug`, `sku` (variant SKU, falling back to product SKU),
+and the primary `image_url`/`image_alt`.
+
+Estimated totals are subtotal plus NPR 100 delivery per shop; no separate tax is
+added. There is no free-shipping threshold, so a per-shop delivery notice replaces
+a free-shipping progress bar. Promotion codes are not previewed: Apply stages the
+code, the server validates it when the order is placed, and any discount appears
+on the order. Payment is cash on delivery only; express wallets and cards are
+listed as unavailable rather than shown as buttons. Return eligibility follows
+backend policy for delivered orders, so no fixed return window is claimed.
 
 ### Messages
 

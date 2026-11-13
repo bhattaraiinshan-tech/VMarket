@@ -30,12 +30,14 @@ export function CatalogHeader({
   search,
   onSearchChange,
   cartCount,
+  onOpenCart,
 }: {
   categories: Category[];
   categoryId: string;
   search: string;
   onSearchChange: (value: string) => void;
   cartCount: number | null;
+  onOpenCart: () => void;
 }) {
   const { workspace, user } = useWorkspace();
   const isCustomer = workspace === 'customer' && !!user;
@@ -75,9 +77,14 @@ export function CatalogHeader({
             </a>
             <StoreAccountMenu />
             {isCustomer && (
-              <Link className="py-3 hover:underline" href="/cart">
+              <button
+                aria-haspopup="dialog"
+                className="py-3 hover:underline"
+                onClick={onOpenCart}
+                type="button"
+              >
                 View cart{cartCount !== null ? ` (${cartCount})` : ''}
-              </Link>
+              </button>
             )}
             {workspace === 'vendor' && user && (
               <Link className="py-3 hover:underline" href="/vendor">

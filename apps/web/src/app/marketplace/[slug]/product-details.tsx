@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { browserStorageUrl } from '@/lib/network';
 
 import {
@@ -13,6 +13,7 @@ import {
   requestApi,
 } from '@/lib/api';
 import FraudReportForm from '@/app/fraud-report-form';
+import CartDrawer from '@/app/cart/cart-drawer';
 import { useWorkspace } from '@/lib/workspace-context';
 import {
   ProductGallery,
@@ -39,6 +40,25 @@ export default function ProductDetails({ slug }: { slug: string }) {
   const [cartError, setCartError] = useState('');
   const [addingToCart, setAddingToCart] = useState(false);
   const cartRevision = useRef(0);
+  const [cartOpen, setCartOpen] = useState(false);
+  const [drawerCart, setDrawerCart] = useState<Cart | undefined>();
+  const openCart = useCallback(() => {
+    setDrawerCart(undefined);
+    setCartOpen(true);
+  }, []);
+  const closeCart = useCallback(() => setCartOpen(false), []);
+  const updateCartCount = useCallback((cart: Cart) => {
+    cartRevision.current += 1;
+    setCartCount(cart.item_count);
+    setCartError('');
+  }, []);
+  const cartDrawer = cartOpen ? (
+    <CartDrawer
+      initialCart={drawerCart}
+      onCartChange={updateCartCount}
+      onClose={closeCart}
+    />
+  ) : null;
   const selectedVariant = product?.variants.find(
     (variant) => variant.id === selectedVariantId,
   );
@@ -172,6 +192,8 @@ export default function ProductDetails({ slug }: { slug: string }) {
       setCartMessage(
         `${quantity} item${quantity === 1 ? '' : 's'} added to your cart.`,
       );
+      setDrawerCart(cart);
+      setCartOpen(true);
     } catch (cause: unknown) {
       setError(
         cause instanceof Error
@@ -227,7 +249,7 @@ export default function ProductDetails({ slug }: { slug: string }) {
   if (error && !product) {
     return (
       <div className="min-h-screen bg-white">
-        <ProductHeader cartCount={cartCount} />
+        <ProductHeader cartCount={cartCount} onOpenCart={openCart} />
         <main className="mx-auto max-w-5xl px-5 py-10">
           <p
             className="rounded-lg bg-red-50 p-4 text-sm text-red-800"
@@ -242,26 +264,28 @@ export default function ProductDetails({ slug }: { slug: string }) {
             Back to marketplace
           </Link>
         </main>
+        {cartDrawer}
       </div>
     );
   }
   if (!product) {
     return (
       <div className="min-h-screen bg-white">
-        <ProductHeader cartCount={cartCount} />
+        <ProductHeader cartCount={cartCount} onOpenCart={openCart} />
         <main
           className="mx-auto max-w-5xl px-5 py-16 text-center"
           role="status"
         >
           Loading product…
         </main>
+        {cartDrawer}
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-white text-gray-950">
-      <ProductHeader cartCount={cartCount} />
+      <ProductHeader cartCount={cartCount} onOpenCart={openCart} />
       <main className="mx-auto max-w-[1440px] px-5 py-6 sm:px-8 lg:py-10">
         {error && (
           <p
@@ -555,6 +579,7 @@ export default function ProductDetails({ slug }: { slug: string }) {
           )}
         </div>
       </main>
+      {cartDrawer}
     </div>
   );
 }

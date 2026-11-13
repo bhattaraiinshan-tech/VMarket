@@ -7,7 +7,13 @@ import { browserStorageUrl } from '@/lib/network';
 import { useWorkspace } from '@/lib/workspace-context';
 import StoreAccountMenu from '../store-account-menu';
 
-export function ProductHeader({ cartCount }: { cartCount: number | null }) {
+export function ProductHeader({
+  cartCount,
+  onOpenCart,
+}: {
+  cartCount: number | null;
+  onOpenCart: () => void;
+}) {
   const { user, workspace } = useWorkspace();
   const customer = !!user && workspace === 'customer';
 
@@ -28,12 +34,20 @@ export function ProductHeader({ cartCount }: { cartCount: number | null }) {
         </Link>
         <div className="col-span-2 flex items-center justify-end gap-6 pb-3 sm:col-span-1 sm:col-start-3 sm:row-start-1 sm:pb-0">
           <StoreAccountMenu />
-          <Link
-            className="py-3 hover:underline"
-            href={customer ? '/cart' : '/'}
-          >
-            My Bag{customer && cartCount !== null ? ` (${cartCount})` : ''}
-          </Link>
+          {customer ? (
+            <button
+              aria-haspopup="dialog"
+              className="py-3 hover:underline"
+              onClick={onOpenCart}
+              type="button"
+            >
+              My Bag{cartCount !== null ? ` (${cartCount})` : ''}
+            </button>
+          ) : (
+            <Link className="py-3 hover:underline" href="/">
+              My Bag
+            </Link>
+          )}
         </div>
       </nav>
     </header>

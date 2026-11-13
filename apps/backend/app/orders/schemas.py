@@ -22,7 +22,11 @@ class CartItemRead(BaseModel):
     product_id: UUID
     variant_id: UUID | None
     product_name: str
+    product_slug: str
     variant_name: str | None
+    sku: str
+    image_url: str | None
+    image_alt: str
     shop_id: UUID
     shop_name: str
     unit_price: Decimal

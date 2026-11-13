@@ -145,10 +145,18 @@ describe('product details', () => {
     expect(
       await screen.findByText('2 items added to your cart.'),
     ).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'My Bag (4)' })).toHaveAttribute(
-      'href',
-      '/cart',
+    const drawer = await screen.findByRole('dialog', {
+      name: 'Your cart (4)',
+    });
+    expect(screen.getByRole('button', { name: 'My Bag (4)' })).toHaveAttribute(
+      'aria-haspopup',
+      'dialog',
     );
+    expect(
+      fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/me/cart')),
+    ).toHaveLength(1);
+    fireEvent.keyDown(drawer, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(
       fetchMock.mock.calls.some(
         ([, init]) =>
@@ -360,9 +368,9 @@ describe('product details', () => {
     });
     render(<ProductDetails slug="rice" />);
     await screen.findByText('Cart unavailable');
-    expect(screen.getByRole('link', { name: 'My Bag' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'My Bag' })).toBeVisible();
     expect(
-      screen.queryByRole('link', { name: 'My Bag (0)' }),
+      screen.queryByRole('button', { name: 'My Bag (0)' }),
     ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Add to cart' }));
     await waitFor(() =>
@@ -410,7 +418,7 @@ describe('product details', () => {
     resolveAddition(
       Response.json({ item_count: 5, items: [], subtotal: '500' }),
     );
-    await screen.findByRole('link', { name: 'My Bag (5)' });
+    await screen.findByRole('button', { name: 'My Bag (5)' });
     await act(async () => {
       resolveInitial(
         Response.json({ item_count: 1, items: [], subtotal: '100' }),
@@ -418,10 +426,10 @@ describe('product details', () => {
     });
     await waitFor(() =>
       expect(
-        screen.queryByRole('link', { name: 'My Bag (1)' }),
+        screen.queryByRole('button', { name: 'My Bag (1)' }),
       ).not.toBeInTheDocument(),
     );
-    expect(screen.getByRole('link', { name: 'My Bag (5)' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'My Bag (5)' })).toBeVisible();
   });
 
   it('uses named options when attribute combinations do not uniquely identify a variant', async () => {

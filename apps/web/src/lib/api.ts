@@ -249,7 +249,11 @@ export type CartItem = {
   product_id: string;
   variant_id: string | null;
   product_name: string;
+  product_slug: string;
   variant_name: string | null;
+  sku: string;
+  image_url: string | null;
+  image_alt: string;
   shop_id: string;
   shop_name: string;
   unit_price: string;

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   ApiError,
@@ -24,6 +24,7 @@ import {
   ProductCard,
 } from './catalog-presentation';
 import styles from './catalog.module.css';
+import CartDrawer from '../cart/cart-drawer';
 
 const initialFilters: Filters = {
   q: '',
@@ -76,6 +77,14 @@ export default function Marketplace({
   const [loading, setLoading] = useState(true);
   const [cartCount, setCartCount] = useState<number | null>(null);
   const [cartError, setCartError] = useState('');
+  const [cartOpen, setCartOpen] = useState(false);
+  const cartRevision = useRef(0);
+  const closeCart = useCallback(() => setCartOpen(false), []);
+  const updateCartCount = useCallback((cart: Cart) => {
+    cartRevision.current += 1;
+    setCartCount(cart.item_count);
+    setCartError('');
+  }, []);
   const [catalogError, setCatalogError] = useState('');
   const [productError, setProductError] = useState('');
   const [catalogLoading, setCatalogLoading] = useState(true);
@@ -179,12 +188,14 @@ export default function Marketplace({
   useEffect(() => {
     if (workspace !== 'customer' || !user) return;
     const controller = new AbortController();
+    const revision = cartRevision.current;
     void requestApi<Cart>('/me/cart', { signal: controller.signal })
       .then((cart) => {
-        if (!controller.signal.aborted) setCartCount(cart.item_count);
+        if (!controller.signal.aborted && revision === cartRevision.current)
+          setCartCount(cart.item_count);
       })
       .catch((cause: unknown) => {
-        if (!controller.signal.aborted)
+        if (!controller.signal.aborted && revision === cartRevision.current)
           setCartError(
             cause instanceof Error
               ? cause.message
@@ -293,6 +304,7 @@ export default function Marketplace({
         search={draft.q}
         onSearchChange={(q) => setDraft((current) => ({ ...current, q }))}
         cartCount={cartCount}
+        onOpenCart={() => setCartOpen(true)}
       />
       <main className="marketplace-page">
         <CatalogBreadcrumbs
@@ -543,6 +555,9 @@ export default function Marketplace({
         </section>
       </main>
       <CatalogFooter categories={categories} />
+      {cartOpen && (
+        <CartDrawer onCartChange={updateCartCount} onClose={closeCart} />
+      )}
     </div>
   );
 }

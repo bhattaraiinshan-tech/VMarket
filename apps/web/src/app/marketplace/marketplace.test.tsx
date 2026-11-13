@@ -163,9 +163,9 @@ describe('marketplace', () => {
       installFetchMock();
       render(<Marketplace />);
       await screen.findByText('Handwoven Basket');
-      expect(screen.queryByRole('link', { name: /^View cart/ }) !== null).toBe(
-        workspace === 'customer',
-      );
+      expect(
+        screen.queryByRole('button', { name: /^View cart/ }) !== null,
+      ).toBe(workspace === 'customer');
       if (workspace === 'customer') {
         fireEvent.click(screen.getByText('Account'));
         expect(
@@ -516,7 +516,7 @@ describe('marketplace', () => {
     render(<Marketplace />);
     await screen.findByText('Handwoven Basket');
     expect(
-      screen.queryByRole('link', { name: /^View cart/ }),
+      screen.queryByRole('button', { name: /^View cart/ }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: /Add to wishlist/ }),
@@ -535,9 +535,19 @@ describe('marketplace', () => {
     );
     await screen.findByText('Handwoven Basket');
     expect(screen.getAllByRole('banner')).toHaveLength(1);
-    expect(
-      await screen.findByRole('link', { name: 'View cart (3)' }),
-    ).toHaveAttribute('href', '/cart');
+    const trigger = await screen.findByRole('button', {
+      name: 'View cart (3)',
+    });
+    expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
+    trigger.focus();
+    fireEvent.click(trigger);
+    const drawer = await screen.findByRole('dialog', {
+      name: 'Your cart (3)',
+    });
+    expect(screen.getByRole('button', { name: 'Close cart' })).toHaveFocus();
+    fireEvent.keyDown(drawer, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
     fireEvent.click(screen.getByText('Account'));
     fireEvent.change(screen.getByLabelText('Workspace'), {
       target: { value: 'vendor' },
@@ -547,7 +557,7 @@ describe('marketplace', () => {
       screen.getByRole('navigation', { name: 'vendor navigation' }),
     ).toBeVisible();
     expect(
-      screen.queryByRole('link', { name: /^View cart/ }),
+      screen.queryByRole('button', { name: /^View cart/ }),
     ).not.toBeInTheDocument();
   });
 

@@ -4,7 +4,6 @@ import re
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from typing import Annotated
-from urllib.parse import quote
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
@@ -44,6 +43,7 @@ from app.catalog.schemas import (
     ShopRead,
     ShopUpdate,
 )
+from app.catalog.urls import public_object_url
 from app.core.config import get_settings
 from app.core.errors import APIError
 from app.db.session import get_session
@@ -72,12 +72,7 @@ def _slug(name: str) -> str:
     return f"{normalized[:120] or 'item'}-{uuid4().hex[:8]}"
 
 
-def _public_url(object_name: str) -> str:
-    settings = get_settings()
-    return (
-        f"{settings.minio_public_url.rstrip('/')}/"
-        f"{quote(settings.minio_public_bucket, safe='')}/{quote(object_name, safe='/')}"
-    )
+_public_url = public_object_url
 
 
 def _shop_read(shop: Shop, distance_km: float | None = None) -> ShopRead:

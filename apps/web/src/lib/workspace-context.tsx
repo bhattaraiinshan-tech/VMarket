@@ -219,8 +219,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         Skip to content
       </a>
       {!(
-        (path === '/marketplace' || path.startsWith('/marketplace/')) &&
-        (!context.user || mode === 'customer')
+        ((path === '/marketplace' || path.startsWith('/marketplace/')) &&
+          (!context.user || mode === 'customer')) ||
+        (path === '/cart' && !!context.user && mode === 'customer')
       ) && (
         <WorkspaceSwitcher
           key={`${context.user?.id}:${mode}:${context.shopId}`}

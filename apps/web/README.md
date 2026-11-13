@@ -34,6 +34,66 @@ provider supplies a skip-to-content link and keeps protected page content behind
 the existing workspace and shop checks. List screens should distinguish loading
 and failed requests from a successfully loaded empty list.
 
+### Catalog
+
+`/marketplace` uses a plum-accented catalog shell with category navigation,
+global search, a category title and breadcrumb band, a collapsible filter
+sidebar, a discovery banner, and a four-column desktop product grid. The grid
+reduces to three columns on smaller desktops/tablets and two on phones. Filters
+start collapsed below 768px; their drafts survive closing and reopening.
+`catalog-presentation.tsx`, `catalog-filters.tsx`, and `catalog.module.css` in
+`src/app/marketplace/` hold the reusable presentation and scoped styles.
+
+Category links use `?category_id=...`, including nested categories and breadcrumbs.
+Category filtering matches that category exactly, not its descendants. Existing
+`?q=...` search links still work. Search, Update, and Apply filters submit the
+current drafts together; sorting uses only previously applied filters. Clear
+filters resets search, category, brand, price, location, stock, and sort.
+Filter and sort changes reset pagination. Price ranges are validated as decimal
+strings and compared in integer minor units. Nearby shop discovery remains
+available below the catalog.
+
+The shared Account menu preserves Customer workspace selection and navigation
+on both the catalog and product pages. Vendor and Admin retain their existing
+workspace/shop controls. Cart counts and wishlists use Customer APIs only.
+Product cards show actual NPR prices, seller/category metadata, stock badges,
+and links to product reviews. Missing images have an explicit placeholder.
+
+The current public product contract does not include discount prices, aggregate
+ratings, or brand facet counts; these are not inferred from a single results page
+or fabricated. Brand selection is single-select to match the API. Rating filters
+and newsletter signup are explicitly unavailable, and the subscription controls
+are disabled without collecting email addresses. Currency is NPR-only; shipping
+copy states the actual NPR 100 per-shop fee, and the footer lists cash on delivery
+instead of unsupported payment logos. Contact routes go through the account and
+support flows rather than invented phone numbers, addresses, or email accounts.
+The discovery banner is an original inline SVG, not a fictional discount offer.
+
+### Product details
+
+`/marketplace/[slug]` uses a minimalist, responsive 12-column product layout:
+a vertical thumbnail rail and neutral image showcase beside purchase options on
+desktop, with a horizontal thumbnail strip below the image on smaller screens.
+The compact Store / Account / My Bag header retains Customer workspace selection
+and navigation; Vendor and Admin keep their existing workspace/shop controls.
+The bag count is loaded from the cart API and refreshed from add-to-cart responses.
+
+The gallery, header, variant options, and information tabs are reusable components
+in `src/app/marketplace/[slug]/product-presentation.tsx`. Size, color, and other
+option groups come from actual variant attributes, not sample apparel choices.
+Products without consistent, unique attribute combinations use named variant
+buttons instead. Selecting an option retains other selections where available,
+otherwise selects an in-stock combination; the resulting option, price, stock,
+and specifications update together. Quantity resets to one when options change.
+Sold-out options and invalid quantities cannot be added to the cart.
+
+Product information and Shipping & returns tabs support arrow keys, Home, and
+End. Specifications use seller-provided product/variant attributes and label
+missing fields as Not provided. Shipping copy reflects existing per-shop fees
+and cash on delivery; return eligibility remains subject to current backend
+policy. Real NPR pricing, own-shop restrictions, wishlist, vendor messaging,
+fraud reports, reviews, and related products remain connected to existing APIs.
+
 ### Messages
 
 `/messages` and `/messages/[conversationId]` share a navy-and-blue messenger:

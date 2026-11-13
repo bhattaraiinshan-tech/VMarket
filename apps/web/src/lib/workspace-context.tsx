@@ -218,15 +218,20 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       >
         Skip to content
       </a>
-      <WorkspaceSwitcher
-        key={`${context.user?.id}:${mode}:${context.shopId}`}
-        accountHeader={
-          mode === 'customer' &&
-          (path === '/' ||
-            path === '/messages' ||
-            path.startsWith('/messages/'))
-        }
-      />
+      {!(
+        (path === '/marketplace' || path.startsWith('/marketplace/')) &&
+        (!context.user || mode === 'customer')
+      ) && (
+        <WorkspaceSwitcher
+          key={`${context.user?.id}:${mode}:${context.shopId}`}
+          accountHeader={
+            mode === 'customer' &&
+            (path === '/' ||
+              path === '/messages' ||
+              path.startsWith('/messages/'))
+          }
+        />
+      )}
       <div id="main-content" tabIndex={-1}>
         {blocked ? (
           <main className="mx-auto max-w-4xl px-5 py-12 sm:px-8">

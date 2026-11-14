@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, StrictBool, field_validator
 
 
 class RegisterRequest(BaseModel):
@@ -83,6 +83,59 @@ class ProfileRead(BaseModel):
 
     full_name: str
     phone: str | None
+
+
+class AccountDetailsUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    first_name: str | None = Field(default=None, min_length=1, max_length=120)
+    last_name: str | None = Field(default=None, max_length=120)
+    phone: str | None = Field(default=None, max_length=32)
+    preferred_categories: list[str] | None = Field(default=None, max_length=50)
+    communication_email: StrictBool | None = None
+    communication_sms: StrictBool | None = None
+    business_category: str | None = Field(default=None, max_length=120)
+    registration_number: str | None = Field(default=None, max_length=120)
+    payout_preference: Literal["manual", "bank_transfer"] | None = None
+    business_description: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("first_name", "last_name")
+    @classmethod
+    def normalize_name(cls, value: str | None) -> str | None:
+        return value.strip() if value is not None else None
+
+    @field_validator("phone", "business_category", "registration_number", "business_description")
+    @classmethod
+    def normalize_optional_text(cls, value: str | None) -> str | None:
+        return (value.strip() or None) if value is not None else None
+
+    @field_validator("preferred_categories")
+    @classmethod
+    def validate_categories(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        normalized = [category.strip() for category in value]
+        if any(not category or len(category) > 120 for category in normalized):
+            raise ValueError("Categories must be non-empty and at most 120 characters.")
+        return normalized
+
+
+class AccountDetailsRead(BaseModel):
+    workspace: Literal["customer", "vendor"]
+    first_name: str
+    last_name: str
+    email: str
+    email_verified: bool
+    phone: str | None
+    avatar_url: str | None
+    preferred_categories: list[str]
+    communication_email: bool
+    communication_sms: bool
+    business_name: str | None
+    business_category: str | None
+    registration_number: str | None
+    payout_preference: Literal["manual", "bank_transfer"] | None
+    business_description: str | None
 
 
 class VendorProfileRead(BaseModel):
@@ -263,11 +316,33 @@ class ExportShopRead(BaseModel):
     is_active: bool
 
 
+class ExportCommonSettings(BaseModel):
+    first_name: str
+    last_name: str
+    phone: str | None
+    avatar_url: str | None
+    communication_email: bool
+    communication_sms: bool
+
+
+class CustomerSettingsExport(ExportCommonSettings):
+    preferred_categories: list[str]
+
+
+class VendorSettingsExport(ExportCommonSettings):
+    business_name: str | None
+    business_category: str | None
+    registration_number: str | None
+    payout_preference: Literal["manual", "bank_transfer"] | None
+    business_description: str | None
+
+
 class CustomerExportRead(BaseModel):
     workspace: Literal["customer"] = "customer"
     shop_id: None = None
     account: ExportAccountRead
     profile: ProfileRead
+    account_settings: CustomerSettingsExport
     addresses: list[AddressRead]
     vendor_applications: list[VendorApplicationRead]
 
@@ -277,6 +352,7 @@ class VendorExportRead(BaseModel):
     shop_id: UUID
     account: ExportAccountRead
     vendor_profile: VendorProfileRead
+    account_settings: VendorSettingsExport
     shop: ExportShopRead
 
 

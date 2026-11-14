@@ -20,6 +20,7 @@ export async function requestApi<T>(
   const method = (init.method ?? 'GET').toUpperCase();
   const vendor = /^\/(vendor\/|trade(?:\/|$))/.test(pathname);
   const admin = pathname.startsWith('/admin/');
+  const accountDetails = /^\/me\/account-details(?:\/|$)/.test(pathname);
   const shared =
     /^\/me\/(notifications|support-tickets|conversations|fraud-reports|export)(?:\/|$)/.test(
       pathname,
@@ -29,6 +30,7 @@ export async function requestApi<T>(
     (pathname === '/me' && method === 'PATCH') ||
     (pathname.startsWith('/me/') &&
       !shared &&
+      !accountDetails &&
       !['/me/export', '/me/deactivate'].includes(pathname)) ||
     /^\/(checkout|orders|payments)(?:\/|$)/.test(pathname);
   let required: Workspace | null = vendor
@@ -39,6 +41,14 @@ export async function requestApi<T>(
         ? 'customer'
         : null;
   if (shared) required = context.workspace;
+  if (accountDetails) {
+    if (
+      !context.user ||
+      !['customer', 'vendor'].includes(context.workspace ?? '')
+    )
+      throw new ApiError('Customer or Vendor workspace is required.', 403);
+    required = context.workspace;
+  }
   if (
     (vendor || admin || customer || shared) &&
     (!context.user || !required || context.workspace !== required)

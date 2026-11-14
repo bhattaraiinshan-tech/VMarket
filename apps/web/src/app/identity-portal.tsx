@@ -6,6 +6,15 @@ import { ApiError, requestApi as request } from '@/lib/api';
 import { useWorkspace } from '@/lib/workspace-context';
 import { browserStorageUrl } from '@/lib/network';
 import {
+  AccountShell,
+  type AccountWorkspace,
+} from '@/components/account/account-shell';
+import {
+  AccountProfile,
+  AccountSecurity,
+  ShopProfile,
+} from '@/components/account/account-profile';
+import {
   setWorkspaceUser as setUser,
   type WorkspaceUser as UserProfile,
 } from '@/lib/workspace-state';
@@ -124,8 +133,6 @@ export default function IdentityPortal({
   const [fullName, setFullName] = useState('');
   const [resetToken, setResetToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [profileName, setProfileName] = useState('');
-  const [profilePhone, setProfilePhone] = useState('');
   const [deactivationPassword, setDeactivationPassword] = useState('');
   const [addressDraft, setAddressDraft] = useState(emptyAddress);
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
@@ -169,8 +176,6 @@ export default function IdentityPortal({
     ])
       .then(async ([savedAddresses, savedApplications, activeSessions]) => {
         if (signal.aborted) return;
-        setProfileName(user.profile?.full_name ?? '');
-        setProfilePhone(user.profile?.phone ?? '');
         setAddresses(savedAddresses);
         setApplications(savedApplications);
         setSessions(activeSessions);
@@ -321,21 +326,6 @@ export default function IdentityPortal({
     } finally {
       setBusy(false);
     }
-  }
-
-  async function updateProfile(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    await runAction(async () => {
-      const account = await request<UserProfile>('/me', {
-        method: 'PATCH',
-        body: JSON.stringify({
-          full_name: profileName,
-          phone: profilePhone || null,
-        }),
-      });
-      setUser(account);
-      setMessage('Your profile has been updated.');
-    });
   }
 
   async function addAddress(event: FormEvent<HTMLFormElement>) {
@@ -564,6 +554,12 @@ export default function IdentityPortal({
   }
 
   if (user && mode !== 'reset') {
+    const accountWorkspace: AccountWorkspace | null =
+      !adminOnly && workspace === 'customer' && user.profile
+        ? 'customer'
+        : !adminOnly && workspace === 'vendor' && user.vendor_profile
+          ? 'vendor'
+          : null;
     const pendingApplication = applications.find(
       (application) => application.status === 'pending',
     );
@@ -574,661 +570,663 @@ export default function IdentityPortal({
 
     return (
       <main
-        className={`mx-auto min-h-screen w-full px-5 py-8 sm:px-8 ${!adminOnly && workspace === 'customer' ? 'account-dashboard max-w-7xl' : 'max-w-5xl'}`}
+        className={`mx-auto min-h-screen w-full px-4 py-8 sm:px-8 ${accountWorkspace ? 'account-dashboard max-w-7xl' : 'max-w-5xl'}`}
       >
-        <header
-          className={`flex flex-wrap items-center justify-between gap-4 ${!adminOnly && workspace === 'customer' ? 'pb-2' : 'border-b border-slate-200 pb-5'}`}
+        <AccountShell
+          busy={busy}
+          onSignOut={() =>
+            void runAction(async () => {
+              await request('/auth/logout', { method: 'POST' });
+              setUser(null);
+              setAddresses([]);
+              setApplications([]);
+            })
+          }
+          user={user}
+          workspace={accountWorkspace}
         >
-          <div>
-            {(adminOnly || workspace !== 'customer') && (
-              <p className="text-sm font-bold text-emerald-800">
-                Vendor&apos;s Market
-              </p>
-            )}
-            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-              {adminOnly ? 'Platform administration' : 'Your account'}
-            </h1>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {!adminOnly && user.roles.includes('vendor') && (
-              <Link
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
-                href="/vendor"
-              >
-                Vendor catalogue
-              </Link>
-            )}
-            {user.roles.includes('admin') && (
-              <>
-                <Link
-                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
-                  href="/admin/catalog"
-                >
-                  Catalogue admin
-                </Link>
-                <Link
-                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
-                  href="/admin/operations"
-                >
-                  Operations
-                </Link>
-              </>
-            )}
-            <button
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
-              disabled={busy}
-              onClick={() =>
-                void runAction(async () => {
-                  await request('/auth/logout', { method: 'POST' });
-                  setUser(null);
-                  setAddresses([]);
-                  setApplications([]);
-                })
-              }
-              type="button"
-            >
-              Sign out
-            </button>
-          </div>
-        </header>
-
-        {(message || error) && (
-          <p
-            className={`mt-5 rounded-lg px-4 py-3 text-sm ${error ? 'bg-red-50 text-red-800' : 'bg-emerald-50 text-emerald-800'}`}
-            role={error ? 'alert' : 'status'}
+          <header
+            className={`flex flex-wrap items-center justify-between gap-4 ${accountWorkspace ? 'account-card' : 'border-b border-slate-200 pb-5'}`}
+            id="account-overview"
           >
-            {error || message}
-          </p>
-        )}
-
-        {!adminOnly && workspace === 'customer' && (
-          <section className="mt-6 grid gap-5 md:grid-cols-2">
-            <article className="account-card">
-              <h2 className="text-lg font-semibold">Profile</h2>
-              <div className="mt-4 flex min-w-0 items-center gap-4">
-                <div
-                  aria-label="Profile initial"
-                  className="account-avatar"
-                  role="img"
+            <div>
+              {(adminOnly || workspace !== 'customer') && (
+                <p className="text-sm font-bold text-emerald-800">
+                  Vendor&apos;s Market
+                </p>
+              )}
+              <h1 className="text-2xl font-bold uppercase tracking-wider sm:text-3xl">
+                {adminOnly
+                  ? 'Platform administration'
+                  : accountWorkspace
+                    ? 'Profile settings'
+                    : 'Your account'}
+              </h1>
+              {accountWorkspace && (
+                <p className="mt-3 text-sm leading-6 text-slate-600">
+                  Manage your details, preferences and account security.
+                </p>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {!adminOnly && user.roles.includes('vendor') && (
+                <Link
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+                  href="/vendor"
                 >
-                  {(user.profile?.full_name || user.email)
-                    .trim()
-                    .slice(0, 1)
-                    .toUpperCase()}
-                </div>
-                <div className="min-w-0">
-                  <p className="break-all text-sm font-medium text-slate-800">
-                    {user.email}
-                  </p>
-                  <p className="mt-2 inline-flex rounded-full bg-teal-50 px-2 py-1 text-xs font-semibold text-teal-900">
-                    {user.email_verified
-                      ? 'Email verified'
-                      : 'Email not verified'}
-                  </p>
-                </div>
-              </div>
-              <form className="mt-5 space-y-4" onSubmit={updateProfile}>
-                <label className="block text-sm font-medium">
-                  Full name
-                  <input
-                    autoComplete="name"
-                    className={inputClassName()}
-                    maxLength={120}
-                    onChange={(event) => setProfileName(event.target.value)}
-                    required
-                    value={profileName}
-                  />
-                </label>
-                <label className="block text-sm font-medium">
-                  Phone number
-                  <input
-                    autoComplete="tel"
-                    className={inputClassName()}
-                    maxLength={32}
-                    onChange={(event) => setProfilePhone(event.target.value)}
-                    value={profilePhone}
-                  />
-                </label>
+                  Vendor catalogue
+                </Link>
+              )}
+              {user.roles.includes('admin') && (
+                <>
+                  <Link
+                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+                    href="/admin/catalog"
+                  >
+                    Catalogue admin
+                  </Link>
+                  <Link
+                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+                    href="/admin/operations"
+                  >
+                    Operations
+                  </Link>
+                </>
+              )}
+              {!accountWorkspace && (
                 <button
-                  className="w-full rounded-lg bg-teal-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-900 disabled:opacity-60"
-                  disabled={busy || workspace !== 'customer'}
-                  type="submit"
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+                  disabled={busy}
+                  onClick={() =>
+                    void runAction(async () => {
+                      await request('/auth/logout', { method: 'POST' });
+                      setUser(null);
+                      setAddresses([]);
+                      setApplications([]);
+                    })
+                  }
+                  type="button"
                 >
-                  Save changes
+                  Sign out
                 </button>
-              </form>
-            </article>
+              )}
+            </div>
+          </header>
 
-            {workspace === 'customer' && (
-              <article className="account-card">
-                <h2 className="text-lg font-semibold">Delivery addresses</h2>
-                {accountDataState === 'loading' ? (
-                  <p className="mt-3 text-sm text-slate-600" role="status">
-                    Loading addresses...
-                  </p>
-                ) : accountDataState === 'error' ? (
-                  <p className="mt-3 text-sm text-red-800">
-                    Addresses could not be loaded.
-                  </p>
-                ) : addresses.length > 0 ? (
-                  <ul className="mt-3 space-y-2">
-                    {addresses.map((address) => (
-                      <li
-                        className="rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-sm"
-                        key={address.id}
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div>
-                            <span className="font-semibold">
-                              {address.label}
-                              {address.is_default ? ' - Default' : ''}
-                            </span>
-                            <p className="mt-1 text-slate-600">
-                              {address.recipient_name}, {address.street_address}
-                              , {address.city}, {address.province}
-                            </p>
+          {(message || error) && (
+            <p
+              className={`mt-5 rounded-lg px-4 py-3 text-sm ${error ? 'bg-red-50 text-red-800' : 'bg-emerald-50 text-emerald-800'}`}
+              role={error ? 'alert' : 'status'}
+            >
+              {error || message}
+            </p>
+          )}
+
+          {accountWorkspace && (
+            <>
+              <AccountProfile
+                key={`${user.id}:${accountWorkspace}`}
+                workspace={accountWorkspace}
+              />
+              {accountWorkspace === 'vendor' && <ShopProfile />}
+              <AccountSecurity
+                email={user.email}
+                workspace={accountWorkspace}
+              />
+            </>
+          )}
+
+          {!adminOnly && workspace === 'customer' && (
+            <section>
+              {workspace === 'customer' && (
+                <article className="account-card" id="address-book">
+                  <h2 className="text-lg font-semibold">Delivery addresses</h2>
+                  {accountDataState === 'loading' ? (
+                    <p className="mt-3 text-sm text-slate-600" role="status">
+                      Loading addresses...
+                    </p>
+                  ) : accountDataState === 'error' ? (
+                    <p className="mt-3 text-sm text-red-800">
+                      Addresses could not be loaded.
+                    </p>
+                  ) : addresses.length > 0 ? (
+                    <ul className="mt-3 space-y-2">
+                      {addresses.map((address) => (
+                        <li
+                          className="rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-sm"
+                          key={address.id}
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <span className="font-semibold">
+                                {address.label}
+                                {address.is_default ? ' - Default' : ''}
+                              </span>
+                              <p className="mt-1 text-slate-600">
+                                {address.recipient_name},{' '}
+                                {address.street_address}, {address.city},{' '}
+                                {address.province}
+                              </p>
+                            </div>
+                            <div className="flex gap-3">
+                              <button
+                                aria-label={`Edit ${address.label} address`}
+                                className="rounded-lg border border-slate-300 px-3 py-2 font-semibold text-teal-800 hover:bg-teal-50"
+                                disabled={busy}
+                                onClick={() => editAddress(address)}
+                                type="button"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                aria-label={`Delete ${address.label} address`}
+                                className="rounded-lg border border-slate-300 px-3 py-2 font-semibold text-red-800 hover:bg-red-50"
+                                disabled={busy}
+                                onClick={() => void removeAddress(address)}
+                                type="button"
+                              >
+                                Delete
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex gap-3">
-                            <button
-                              aria-label={`Edit ${address.label} address`}
-                              className="rounded-lg border border-slate-300 px-3 py-2 font-semibold text-teal-800 hover:bg-teal-50"
-                              disabled={busy}
-                              onClick={() => editAddress(address)}
-                              type="button"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              aria-label={`Delete ${address.label} address`}
-                              className="rounded-lg border border-slate-300 px-3 py-2 font-semibold text-red-800 hover:bg-red-50"
-                              disabled={busy}
-                              onClick={() => void removeAddress(address)}
-                              type="button"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-2 text-sm text-slate-600">
-                    Add an address to make future checkout faster.
-                  </p>
-                )}
-                {!showAddressForm && accountDataState === 'ready' && (
-                  <button
-                    className="mt-5 w-full rounded-lg bg-teal-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-900 disabled:opacity-60"
-                    disabled={busy}
-                    onClick={() => setShowAddressForm(true)}
-                    ref={addAddressButtonRef}
-                    type="button"
-                  >
-                    Add new address
-                  </button>
-                )}
-                {showAddressForm && (
-                  <form
-                    className="mt-5 grid gap-3 sm:grid-cols-2"
-                    id="address-form"
-                    onSubmit={addAddress}
-                  >
-                    {(
-                      [
-                        ['label', 'Label'],
-                        ['recipient_name', 'Recipient name'],
-                        ['phone', 'Phone'],
-                        ['province', 'Province'],
-                        ['city', 'City / municipality'],
-                        ['area', 'Area'],
-                        ['street_address', 'Street address'],
-                        ['postal_code', 'Postal code'],
-                      ] as const
-                    ).map(([field, label]) => (
-                      <label className="text-sm font-medium" key={field}>
-                        {label}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-2 text-sm text-slate-600">
+                      Add an address to make future checkout faster.
+                    </p>
+                  )}
+                  {!showAddressForm && accountDataState === 'ready' && (
+                    <button
+                      className="mt-5 w-full rounded-lg bg-teal-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-900 disabled:opacity-60"
+                      disabled={busy}
+                      onClick={() => setShowAddressForm(true)}
+                      ref={addAddressButtonRef}
+                      type="button"
+                    >
+                      Add new address
+                    </button>
+                  )}
+                  {showAddressForm && (
+                    <form
+                      className="mt-5 grid gap-3 sm:grid-cols-2"
+                      id="address-form"
+                      onSubmit={addAddress}
+                    >
+                      {(
+                        [
+                          ['label', 'Label'],
+                          ['recipient_name', 'Recipient name'],
+                          ['phone', 'Phone'],
+                          ['province', 'Province'],
+                          ['city', 'City / municipality'],
+                          ['area', 'Area'],
+                          ['street_address', 'Street address'],
+                          ['postal_code', 'Postal code'],
+                        ] as const
+                      ).map(([field, label]) => (
+                        <label className="text-sm font-medium" key={field}>
+                          {label}
+                          <input
+                            className={inputClassName()}
+                            ref={
+                              field === 'label' ? addressLabelRef : undefined
+                            }
+                            onChange={(event) =>
+                              setAddressDraft((current) => ({
+                                ...current,
+                                [field]: event.target.value,
+                              }))
+                            }
+                            required={
+                              field !== 'area' && field !== 'postal_code'
+                            }
+                            value={addressDraft[field]}
+                          />
+                        </label>
+                      ))}
+                      <label className="flex items-center gap-2 text-sm sm:col-span-2">
                         <input
-                          className={inputClassName()}
-                          ref={field === 'label' ? addressLabelRef : undefined}
+                          checked={addressDraft.is_default}
                           onChange={(event) =>
                             setAddressDraft((current) => ({
                               ...current,
-                              [field]: event.target.value,
+                              is_default: event.target.checked,
                             }))
                           }
-                          required={field !== 'area' && field !== 'postal_code'}
-                          value={addressDraft[field]}
+                          type="checkbox"
                         />
+                        Make this my default address
                       </label>
-                    ))}
-                    <label className="flex items-center gap-2 text-sm sm:col-span-2">
-                      <input
-                        checked={addressDraft.is_default}
-                        onChange={(event) =>
-                          setAddressDraft((current) => ({
-                            ...current,
-                            is_default: event.target.checked,
-                          }))
-                        }
-                        type="checkbox"
-                      />
-                      Make this my default address
-                    </label>
-                    <button
-                      className="w-fit rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60 sm:col-span-2"
-                      disabled={busy}
-                      type="submit"
-                    >
-                      {editingAddressId ? 'Save address' : 'Add address'}
-                    </button>
-                    <button
-                      className="w-fit rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50 sm:col-span-2"
-                      disabled={busy}
-                      onClick={() => {
-                        setEditingAddressId(null);
-                        setAddressDraft(emptyAddress);
-                        setShowAddressForm(false);
-                      }}
-                      type="button"
-                    >
-                      {editingAddressId ? 'Cancel editing' : 'Cancel'}
-                    </button>
-                  </form>
-                )}
-              </article>
-            )}
-          </section>
-        )}
-
-        {!adminOnly && (
-          <div className="mt-5 grid items-start gap-5">
-            <section className="account-card">
-              <h2 className="text-lg font-semibold">Signed-in sessions</h2>
-              {accountDataState === 'loading' ? (
-                <p className="mt-3 text-sm text-slate-600" role="status">
-                  Loading sessions...
-                </p>
-              ) : accountDataState === 'error' ? (
-                <p className="mt-3 text-sm text-red-800">
-                  Sessions could not be loaded.
-                </p>
-              ) : sessions.length === 0 ? (
-                <p className="mt-2 text-sm text-slate-600">
-                  No active sessions were found.
-                </p>
-              ) : (
-                <ul className="mt-3 space-y-3">
-                  {sessions.map((authSession) => (
-                    <li
-                      className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 py-3 text-sm last:border-0"
-                      key={authSession.id}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold">
-                          {authSession.user_agent || 'Unknown device'}
-                          {authSession.current ? ' - This device' : ''}
-                        </p>
-                        <p className="mt-1 text-slate-600">
-                          Signed in{' '}
-                          {new Date(authSession.created_at).toLocaleString()} |
-                          Last active{' '}
-                          {new Date(authSession.last_seen_at).toLocaleString()}
-                        </p>
-                      </div>
                       <button
-                        aria-label={
-                          authSession.current
-                            ? 'Sign out of this device'
-                            : `Revoke session: ${authSession.user_agent || 'Unknown device'}`
-                        }
-                        className="rounded-lg border border-slate-300 px-3 py-2 font-semibold text-red-800 hover:bg-red-50 disabled:opacity-60"
+                        className="w-fit rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60 sm:col-span-2"
                         disabled={busy}
-                        onClick={() => void revokeSession(authSession)}
+                        type="submit"
+                      >
+                        {editingAddressId ? 'Save address' : 'Add address'}
+                      </button>
+                      <button
+                        className="w-fit rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50 sm:col-span-2"
+                        disabled={busy}
+                        onClick={() => {
+                          setEditingAddressId(null);
+                          setAddressDraft(emptyAddress);
+                          setShowAddressForm(false);
+                        }}
                         type="button"
                       >
-                        {authSession.current ? 'Sign out' : 'Revoke session'}
+                        {editingAddressId ? 'Cancel editing' : 'Cancel'}
                       </button>
-                    </li>
-                  ))}
-                </ul>
+                    </form>
+                  )}
+                </article>
               )}
             </section>
-            {workspace === 'customer' && (
-              <section className="account-card">
-                <h2 className="text-lg font-semibold">Security and actions</h2>
-                <button
-                  className="mt-4 text-sm font-medium text-emerald-800 underline underline-offset-2"
-                  disabled={busy}
-                  onClick={() => void exportAccountData()}
-                  type="button"
-                >
-                  Download my personal data
-                </button>
+          )}
+
+          {!adminOnly && (
+            <div className="mt-5 grid items-start gap-5">
+              <section className="account-card" id="security">
+                <h2 className="text-lg font-semibold">Signed-in sessions</h2>
+                {accountDataState === 'loading' ? (
+                  <p className="mt-3 text-sm text-slate-600" role="status">
+                    Loading sessions...
+                  </p>
+                ) : accountDataState === 'error' ? (
+                  <p className="mt-3 text-sm text-red-800">
+                    Sessions could not be loaded.
+                  </p>
+                ) : sessions.length === 0 ? (
+                  <p className="mt-2 text-sm text-slate-600">
+                    No active sessions were found.
+                  </p>
+                ) : (
+                  <ul className="mt-3 space-y-3">
+                    {sessions.map((authSession) => (
+                      <li
+                        className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 py-3 text-sm last:border-0"
+                        key={authSession.id}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold">
+                            {authSession.user_agent || 'Unknown device'}
+                            {authSession.current ? ' - This device' : ''}
+                          </p>
+                          <p className="mt-1 text-slate-600">
+                            Signed in{' '}
+                            {new Date(authSession.created_at).toLocaleString()}{' '}
+                            | Last active{' '}
+                            {new Date(
+                              authSession.last_seen_at,
+                            ).toLocaleString()}
+                          </p>
+                        </div>
+                        <button
+                          aria-label={
+                            authSession.current
+                              ? 'Sign out of this device'
+                              : `Revoke session: ${authSession.user_agent || 'Unknown device'}`
+                          }
+                          className="rounded-lg border border-slate-300 px-3 py-2 font-semibold text-red-800 hover:bg-red-50 disabled:opacity-60"
+                          disabled={busy}
+                          onClick={() => void revokeSession(authSession)}
+                          type="button"
+                        >
+                          {authSession.current ? 'Sign out' : 'Revoke session'}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+              {workspace === 'customer' && (
+                <section className="account-card">
+                  <h2 className="text-lg font-semibold">
+                    Security and actions
+                  </h2>
+                  <button
+                    className="mt-4 text-sm font-medium text-emerald-800 underline underline-offset-2"
+                    disabled={busy}
+                    onClick={() => void exportAccountData()}
+                    type="button"
+                  >
+                    Download my personal data
+                  </button>
+                  <form
+                    className="mt-5 border-t border-slate-200 pt-4"
+                    onSubmit={deactivateAccount}
+                  >
+                    <label className="block text-sm font-medium">
+                      Deactivate account
+                      <input
+                        autoComplete="current-password"
+                        className={inputClassName()}
+                        onChange={(event) =>
+                          setDeactivationPassword(event.target.value)
+                        }
+                        placeholder="Confirm your password"
+                        required
+                        type="password"
+                        value={deactivationPassword}
+                      />
+                    </label>
+                    <button
+                      className="mt-3 rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-800 hover:bg-red-50 disabled:opacity-60"
+                      disabled={busy || user.roles.includes('admin')}
+                      type="submit"
+                    >
+                      Deactivate account
+                    </button>
+                  </form>
+                </section>
+              )}
+            </div>
+          )}
+
+          {!adminOnly && workspace === 'customer' && (
+            <section className="account-card mt-5" id="vendor-access">
+              <h2 className="text-lg font-semibold">Vendor workspace access</h2>
+              {applications.map((application) => (
+                <p className="mt-2 text-sm text-slate-700" key={application.id}>
+                  {application.business_name}:{' '}
+                  <strong>{application.status}</strong>
+                  {application.review_notes
+                    ? ` - ${application.review_notes}`
+                    : ''}
+                </p>
+              ))}
+              {!user.vendor_profile && !hasVendorApplication && (
                 <form
-                  className="mt-5 border-t border-slate-200 pt-4"
-                  onSubmit={deactivateAccount}
+                  className="mt-5 grid gap-4 sm:grid-cols-2"
+                  onSubmit={applyAsVendor}
                 >
-                  <label className="block text-sm font-medium">
-                    Deactivate account
+                  <label className="text-sm font-medium">
+                    Business name
                     <input
-                      autoComplete="current-password"
+                      className={inputClassName()}
+                      onChange={(event) => setBusinessName(event.target.value)}
+                      required
+                      value={businessName}
+                    />
+                  </label>
+                  <label className="text-sm font-medium">
+                    Business type
+                    <input
+                      className={inputClassName()}
+                      onChange={(event) => setBusinessType(event.target.value)}
+                      placeholder="Retail, wholesale, supplier..."
+                      required
+                      value={businessType}
+                    />
+                  </label>
+                  <label className="text-sm font-medium">
+                    Registration number
+                    <input
                       className={inputClassName()}
                       onChange={(event) =>
-                        setDeactivationPassword(event.target.value)
+                        setRegistrationNumber(event.target.value)
                       }
-                      placeholder="Confirm your password"
+                      value={registrationNumber}
+                    />
+                  </label>
+                  <label className="text-sm font-medium">
+                    Business address
+                    <input
+                      className={inputClassName()}
+                      onChange={(event) =>
+                        setBusinessAddress(event.target.value)
+                      }
                       required
-                      type="password"
-                      value={deactivationPassword}
+                      value={businessAddress}
                     />
                   </label>
                   <button
-                    className="mt-3 rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-800 hover:bg-red-50 disabled:opacity-60"
-                    disabled={busy || user.roles.includes('admin')}
+                    className="w-fit rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60 sm:col-span-2"
+                    disabled={busy}
                     type="submit"
                   >
-                    Deactivate account
+                    Submit vendor application
                   </button>
                 </form>
-              </section>
-            )}
-          </div>
-        )}
-
-        {!adminOnly && workspace === 'customer' && (
-          <section className="account-card mt-5">
-            <h2 className="text-lg font-semibold">Vendor workspace access</h2>
-            {applications.map((application) => (
-              <p className="mt-2 text-sm text-slate-700" key={application.id}>
-                {application.business_name}:{' '}
-                <strong>{application.status}</strong>
-                {application.review_notes
-                  ? ` - ${application.review_notes}`
-                  : ''}
-              </p>
-            ))}
-            {!user.vendor_profile && !hasVendorApplication && (
-              <form
-                className="mt-5 grid gap-4 sm:grid-cols-2"
-                onSubmit={applyAsVendor}
-              >
-                <label className="text-sm font-medium">
-                  Business name
-                  <input
-                    className={inputClassName()}
-                    onChange={(event) => setBusinessName(event.target.value)}
-                    required
-                    value={businessName}
-                  />
-                </label>
-                <label className="text-sm font-medium">
-                  Business type
-                  <input
-                    className={inputClassName()}
-                    onChange={(event) => setBusinessType(event.target.value)}
-                    placeholder="Retail, wholesale, supplier..."
-                    required
-                    value={businessType}
-                  />
-                </label>
-                <label className="text-sm font-medium">
-                  Registration number
-                  <input
-                    className={inputClassName()}
-                    onChange={(event) =>
-                      setRegistrationNumber(event.target.value)
-                    }
-                    value={registrationNumber}
-                  />
-                </label>
-                <label className="text-sm font-medium">
-                  Business address
-                  <input
-                    className={inputClassName()}
-                    onChange={(event) => setBusinessAddress(event.target.value)}
-                    required
-                    value={businessAddress}
-                  />
-                </label>
-                <button
-                  className="w-fit rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60 sm:col-span-2"
-                  disabled={busy}
-                  type="submit"
+              )}
+              {pendingApplication && (
+                <form
+                  className="mt-5 flex flex-wrap items-end gap-3 border-t border-slate-200 pt-5"
+                  onSubmit={uploadDocument}
                 >
-                  Submit vendor application
-                </button>
-              </form>
-            )}
-            {pendingApplication && (
-              <form
-                className="mt-5 flex flex-wrap items-end gap-3 border-t border-slate-200 pt-5"
-                onSubmit={uploadDocument}
-              >
-                <label className="text-sm font-medium">
-                  Document type
-                  <select
-                    className={inputClassName()}
-                    onChange={(event) => setDocumentType(event.target.value)}
-                    value={documentType}
-                  >
-                    <option value="business_registration">
-                      Business registration
-                    </option>
-                    <option value="pan_vat">PAN / VAT</option>
-                    <option value="citizenship">Citizenship</option>
-                  </select>
-                </label>
-                <label className="text-sm font-medium">
-                  Private document (PDF, PNG, JPEG; max 10 MB)
-                  <input
-                    accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
-                    className="mt-1 block w-full text-sm"
-                    onChange={(event) =>
-                      setDocumentFile(event.target.files?.[0] ?? null)
-                    }
-                    required
-                    type="file"
-                  />
-                </label>
-                <button
-                  className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-60"
-                  disabled={busy || !documentFile}
-                  type="submit"
-                >
-                  Upload securely
-                </button>
-              </form>
-            )}
-            {documents.length > 0 && (
-              <ul className="mt-3 text-sm text-slate-600">
-                {documents.map((document) => (
-                  <li key={document.id}>
-                    {document.document_type}: {document.original_filename}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        )}
-
-        {workspace === 'admin' && user.roles.includes('admin') && (
-          <div className="mt-6 space-y-6">
-            <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
-              <h2 className="text-lg font-semibold">
-                Administrator review queue
-              </h2>
-              {pendingApplications.length === 0 ? (
-                <p className="mt-2 text-sm text-slate-600">
-                  There are no pending vendor applications.
-                </p>
-              ) : (
-                <ul className="mt-4 space-y-3">
-                  {pendingApplications.map((application) => (
-                    <li
-                      className="rounded-xl border border-emerald-100 bg-white p-4"
-                      key={application.id}
+                  <label className="text-sm font-medium">
+                    Document type
+                    <select
+                      className={inputClassName()}
+                      onChange={(event) => setDocumentType(event.target.value)}
+                      value={documentType}
                     >
-                      <p className="font-semibold">
-                        {application.business_name}
-                      </p>
-                      <p className="mt-1 text-sm text-slate-600">
-                        {application.email} | {application.business_type} |{' '}
-                        {application.business_address}
-                      </p>
-                      <div className="mt-3 flex gap-2">
-                        <button
-                          className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white"
-                          disabled={busy}
-                          onClick={() =>
-                            void reviewApplication(application, 'approved')
-                          }
-                          type="button"
-                        >
-                          Approve
-                        </button>
-                        <button
-                          className="rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold text-red-800"
-                          disabled={busy}
-                          onClick={() =>
-                            void reviewApplication(application, 'rejected')
-                          }
-                          type="button"
-                        >
-                          Reject
-                        </button>
-                      </div>
-                      <button
-                        className="mt-3 text-sm font-medium text-emerald-800 underline underline-offset-2"
-                        disabled={busy}
-                        onClick={() => void loadAdminDocuments(application)}
-                        type="button"
-                      >
-                        Load submitted documents
-                      </button>
-                      {adminDocuments[application.id]?.map((document) => (
-                        <p className="mt-2 text-sm" key={document.id}>
-                          {document.document_type}: {document.original_filename}{' '}
-                          {adminDocumentUrls[document.id] ? (
-                            <a
-                              className="font-medium text-emerald-800 underline"
-                              href={adminDocumentUrls[document.id]}
-                              rel="noreferrer"
-                              target="_blank"
-                            >
-                              Open secure link
-                            </a>
-                          ) : (
-                            <button
-                              className="font-medium text-emerald-800 underline"
-                              disabled={busy}
-                              onClick={() =>
-                                void createAdminDocumentUrl(
-                                  application,
-                                  document,
-                                )
-                              }
-                              type="button"
-                            >
-                              Create 5-minute link
-                            </button>
-                          )}
-                        </p>
-                      ))}
+                      <option value="business_registration">
+                        Business registration
+                      </option>
+                      <option value="pan_vat">PAN / VAT</option>
+                      <option value="citizenship">Citizenship</option>
+                    </select>
+                  </label>
+                  <label className="text-sm font-medium">
+                    Private document (PDF, PNG, JPEG; max 10 MB)
+                    <input
+                      accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+                      className="mt-1 block w-full text-sm"
+                      onChange={(event) =>
+                        setDocumentFile(event.target.files?.[0] ?? null)
+                      }
+                      required
+                      type="file"
+                    />
+                  </label>
+                  <button
+                    className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-60"
+                    disabled={busy || !documentFile}
+                    type="submit"
+                  >
+                    Upload securely
+                  </button>
+                </form>
+              )}
+              {documents.length > 0 && (
+                <ul className="mt-3 text-sm text-slate-600">
+                  {documents.map((document) => (
+                    <li key={document.id}>
+                      {document.document_type}: {document.original_filename}
                     </li>
                   ))}
                 </ul>
               )}
             </section>
+          )}
 
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="text-lg font-semibold">Account access controls</h2>
-              <ul className="mt-4 space-y-3">
-                {adminUsers.map((account) => {
-                  const canChangeStatus =
-                    account.id !== user.id &&
-                    account.account_status !== 'deactivated';
-                  const suspended = account.account_status === 'suspended';
-                  return (
-                    <li className="rounded-lg bg-slate-50 p-3" key={account.id}>
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <p className="font-semibold">{account.email}</p>
-                          <p className="text-sm text-slate-600">
-                            {account.roles.join(', ')} |{' '}
-                            {account.account_status}
-                          </p>
-                        </div>
-                        {canChangeStatus && (
+          {workspace === 'admin' && user.roles.includes('admin') && (
+            <div className="mt-6 space-y-6">
+              <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
+                <h2 className="text-lg font-semibold">
+                  Administrator review queue
+                </h2>
+                {pendingApplications.length === 0 ? (
+                  <p className="mt-2 text-sm text-slate-600">
+                    There are no pending vendor applications.
+                  </p>
+                ) : (
+                  <ul className="mt-4 space-y-3">
+                    {pendingApplications.map((application) => (
+                      <li
+                        className="rounded-xl border border-emerald-100 bg-white p-4"
+                        key={application.id}
+                      >
+                        <p className="font-semibold">
+                          {application.business_name}
+                        </p>
+                        <p className="mt-1 text-sm text-slate-600">
+                          {application.email} | {application.business_type} |{' '}
+                          {application.business_address}
+                        </p>
+                        <div className="mt-3 flex gap-2">
                           <button
-                            className={`rounded-lg px-3 py-2 text-sm font-semibold ${suspended ? 'bg-emerald-700 text-white' : 'border border-red-300 text-red-800'}`}
-                            disabled={
-                              busy ||
-                              (suspensionReasons[account.id]?.trim().length ??
-                                0) < 5
-                            }
+                            className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white"
+                            disabled={busy}
                             onClick={() =>
-                              void setAccountSuspension(account, !suspended)
+                              void reviewApplication(application, 'approved')
                             }
                             type="button"
                           >
-                            {suspended ? 'Reactivate' : 'Suspend'}
+                            Approve
                           </button>
-                        )}
-                      </div>
-                      {canChangeStatus && (
-                        <label className="mt-3 block text-sm font-medium">
-                          Reason for {suspended ? 'reactivation' : 'suspension'}
-                          <input
-                            className={inputClassName()}
-                            minLength={5}
-                            onChange={(event) =>
-                              setSuspensionReasons((current) => ({
-                                ...current,
-                                [account.id]: event.target.value,
-                              }))
+                          <button
+                            className="rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold text-red-800"
+                            disabled={busy}
+                            onClick={() =>
+                              void reviewApplication(application, 'rejected')
                             }
-                            required
-                            value={suspensionReasons[account.id] ?? ''}
-                          />
-                        </label>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
+                            type="button"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                        <button
+                          className="mt-3 text-sm font-medium text-emerald-800 underline underline-offset-2"
+                          disabled={busy}
+                          onClick={() => void loadAdminDocuments(application)}
+                          type="button"
+                        >
+                          Load submitted documents
+                        </button>
+                        {adminDocuments[application.id]?.map((document) => (
+                          <p className="mt-2 text-sm" key={document.id}>
+                            {document.document_type}:{' '}
+                            {document.original_filename}{' '}
+                            {adminDocumentUrls[document.id] ? (
+                              <a
+                                className="font-medium text-emerald-800 underline"
+                                href={adminDocumentUrls[document.id]}
+                                rel="noreferrer"
+                                target="_blank"
+                              >
+                                Open secure link
+                              </a>
+                            ) : (
+                              <button
+                                className="font-medium text-emerald-800 underline"
+                                disabled={busy}
+                                onClick={() =>
+                                  void createAdminDocumentUrl(
+                                    application,
+                                    document,
+                                  )
+                                }
+                                type="button"
+                              >
+                                Create 5-minute link
+                              </button>
+                            )}
+                          </p>
+                        ))}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
 
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="text-lg font-semibold">
-                Administrative audit history
-              </h2>
-              {auditEvents.length === 0 ? (
-                <p className="mt-2 text-sm text-slate-600">
-                  No administrative events have been recorded.
-                </p>
-              ) : (
-                <ul className="mt-3 space-y-2">
-                  {auditEvents.map((event) => (
-                    <li
-                      className="rounded-lg bg-slate-50 p-3 text-sm"
-                      key={event.id}
-                    >
-                      <p className="font-semibold">{event.action}</p>
-                      <p className="mt-1 text-slate-600">
-                        {event.target_type} {event.target_id} |{' '}
-                        {new Date(event.created_at).toLocaleString()}
-                      </p>
-                      {event.details && (
-                        <p className="mt-1 text-slate-600">{event.details}</p>
-                      )}
-                    </li>
-                  ))}
+              <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-semibold">
+                  Account access controls
+                </h2>
+                <ul className="mt-4 space-y-3">
+                  {adminUsers.map((account) => {
+                    const canChangeStatus =
+                      account.id !== user.id &&
+                      account.account_status !== 'deactivated';
+                    const suspended = account.account_status === 'suspended';
+                    return (
+                      <li
+                        className="rounded-lg bg-slate-50 p-3"
+                        key={account.id}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="font-semibold">{account.email}</p>
+                            <p className="text-sm text-slate-600">
+                              {account.roles.join(', ')} |{' '}
+                              {account.account_status}
+                            </p>
+                          </div>
+                          {canChangeStatus && (
+                            <button
+                              className={`rounded-lg px-3 py-2 text-sm font-semibold ${suspended ? 'bg-emerald-700 text-white' : 'border border-red-300 text-red-800'}`}
+                              disabled={
+                                busy ||
+                                (suspensionReasons[account.id]?.trim().length ??
+                                  0) < 5
+                              }
+                              onClick={() =>
+                                void setAccountSuspension(account, !suspended)
+                              }
+                              type="button"
+                            >
+                              {suspended ? 'Reactivate' : 'Suspend'}
+                            </button>
+                          )}
+                        </div>
+                        {canChangeStatus && (
+                          <label className="mt-3 block text-sm font-medium">
+                            Reason for{' '}
+                            {suspended ? 'reactivation' : 'suspension'}
+                            <input
+                              className={inputClassName()}
+                              minLength={5}
+                              onChange={(event) =>
+                                setSuspensionReasons((current) => ({
+                                  ...current,
+                                  [account.id]: event.target.value,
+                                }))
+                              }
+                              required
+                              value={suspensionReasons[account.id] ?? ''}
+                            />
+                          </label>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
-              )}
-            </section>
-          </div>
-        )}
+              </section>
+
+              <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-semibold">
+                  Administrative audit history
+                </h2>
+                {auditEvents.length === 0 ? (
+                  <p className="mt-2 text-sm text-slate-600">
+                    No administrative events have been recorded.
+                  </p>
+                ) : (
+                  <ul className="mt-3 space-y-2">
+                    {auditEvents.map((event) => (
+                      <li
+                        className="rounded-lg bg-slate-50 p-3 text-sm"
+                        key={event.id}
+                      >
+                        <p className="font-semibold">{event.action}</p>
+                        <p className="mt-1 text-slate-600">
+                          {event.target_type} {event.target_id} |{' '}
+                          {new Date(event.created_at).toLocaleString()}
+                        </p>
+                        {event.details && (
+                          <p className="mt-1 text-slate-600">{event.details}</p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            </div>
+          )}
+        </AccountShell>
       </main>
     );
   }

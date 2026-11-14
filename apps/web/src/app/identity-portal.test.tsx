@@ -12,6 +12,24 @@ import IdentityPortal from './identity-portal';
 import WorkspaceSwitcher from './workspace-switcher';
 import { selectWorkspace, setWorkspaceUser } from '@/lib/workspace-state';
 
+const accountDetails = {
+  workspace: 'customer',
+  first_name: 'Test',
+  last_name: 'Customer',
+  phone: null,
+  email: 'customer@example.com',
+  email_verified: true,
+  avatar_url: null,
+  preferred_categories: [],
+  communication_email: false,
+  communication_sms: false,
+  business_name: null,
+  business_category: null,
+  registration_number: null,
+  payout_preference: null,
+  business_description: null,
+};
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -128,6 +146,8 @@ describe('identity account controls', () => {
       if (path.endsWith('/auth/password/reset')) {
         return Response.json({ message: 'Password reset complete.' });
       }
+      if (path.endsWith('/me/account-details'))
+        return Response.json(accountDetails);
       return Response.json([]);
     });
 
@@ -225,6 +245,17 @@ describe('identity account controls', () => {
             vendor_profile: null,
             profile,
           };
+        } else if (path === '/me/account-details') {
+          const updated =
+            init?.method === 'PATCH'
+              ? JSON.parse(String(init.body))
+              : accountDetails;
+          if (init?.method === 'PATCH')
+            profile = {
+              full_name: `${updated.first_name} ${updated.last_name}`,
+              phone: updated.phone,
+            };
+          payload = { ...accountDetails, ...updated };
         } else if (
           path.startsWith('/me/addresses/') &&
           init?.method === 'PUT'
@@ -269,8 +300,8 @@ describe('identity account controls', () => {
     ).toBeInTheDocument();
     expect(await screen.findByText('Other browser')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Full name'), {
-      target: { value: 'Updated Customer' },
+    fireEvent.change(await screen.findByLabelText('First name'), {
+      target: { value: 'Updated' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(
@@ -280,7 +311,7 @@ describe('identity account controls', () => {
       fetchMock.mock.calls.some(
         ([, init]) =>
           init?.method === 'PATCH' &&
-          String(init.body).includes('Updated Customer'),
+          String(init.body).includes('"first_name":"Updated"'),
       ),
     ).toBe(true);
 
@@ -351,6 +382,8 @@ describe('identity account controls', () => {
           { status: 503 },
         );
       }
+      if (path.endsWith('/me/account-details'))
+        return Response.json(accountDetails);
       return Response.json([]);
     });
 

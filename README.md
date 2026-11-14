@@ -53,6 +53,52 @@ receipt confirmation, private MinIO trade documents, supplier performance histor
 business reviews after receipt. Phase 7 adds owner-only operational dashboards and order/payment oversight,
 commission and return-policy settings, platform/vendor-funded promotion codes, and auditable fraud investigations.
 
+## Account settings
+
+The signed-in account page at `/` provides a responsive sidebar and profile/settings cards in Customer and Vendor
+workspaces. It preserves delivery-address management, signed-in sessions, account export/deactivation, and vendor
+applications. Admin account management remains separate. Workspace selection controls which fields are shown; it
+does not grant access. Shop edits require an explicitly selected owned shop and use the existing shop API.
+
+The frontend is composed of `AccountShell`, `AccountProfile`, `ShopProfile`, and `AccountSecurity` in
+`apps/web/src/components/account/`, integrated with the existing identity portal. First/last name, phone, avatar,
+and optional communication choices are shared account details. Existing full names remain intact until edited;
+the combined name is limited to 120 characters. Customer shopping-category preferences and Vendor business
+category, registration/Tax ID, description, and payout preference are workspace-specific. The approved business
+name and sign-in email are read-only. Editable registration metadata does not replace approved verification
+documents. Password changes use the existing email reset-link flow.
+
+`GET/PATCH /api/v1/me/account-details` require an active verified session and an authorized
+`X-VMarket-Workspace: customer|vendor`, but no shop selector. PATCH rejects fields belonging to the other workspace.
+`POST /api/v1/me/account-details/avatar` accepts multipart `file`; DELETE removes the photo. PNG, JPEG, and WebP
+uploads are decoded and validated server-side (maximum 2 MiB and 20 million pixels). The authenticated,
+account-wide `/api/v1/me/account-details/avatar/content` serves only the signed-in user's photo with private,
+no-store caching; it does not require workspace headers or expose public storage URLs. Workspace-specific
+`/api/v1/me/export` responses include the corresponding saved account settings.
+
+Communication preferences record consent only; optional email/SMS campaigns are not currently sent. Payout
+preferences do not connect a bank account or enable automated payouts. Cash on delivery remains the only
+supported checkout payment method; no saved-card page or card controls are added.
+
+Before using account settings, install the updated backend dependencies, back up the database, apply revision
+`0011_account_details`, and restart the backend:
+
+```powershell
+python -m pip install -e "apps\backend[dev]"
+alembic -c apps\backend\alembic.ini upgrade head
+```
+
+The additive migration preserves existing profiles and records. Downgrade refuses to discard any saved
+account-settings row; export and reconcile those records before attempting rollback. Avatar operations require
+the configured private MinIO storage bucket. Migration tests require `VMARKET_MIGRATION_TEST_DATABASE_URL`
+pointing to an isolated PostgreSQL test database; never use the application database.
+
+```powershell
+npm --prefix apps\web test -- src\components\account\account-profile.test.tsx src\app\identity-portal.test.tsx src\app\workspace-boundaries.test.tsx src\lib\api.test.ts
+python -m pytest apps\backend\tests\test_account_details.py apps\backend\tests\test_identity.py -q
+python -m pytest apps\backend\tests\test_account_details_migration.py -q
+```
+
 ## Prerequisites
 
 - Docker with the Compose plugin

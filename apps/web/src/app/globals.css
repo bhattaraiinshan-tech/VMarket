@@ -61,7 +61,14 @@ main[tabindex='-1']:focus {
 }
 
 #main-content:has(.account-dashboard) {
-  background: #d6f1ec;
+  background: #f0f0f0;
+}
+
+.account-dashboard .account-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 0;
+  padding: clamp(1.25rem, 3vw, 2rem);
+  box-shadow: none;
 }
 
 .account-card {

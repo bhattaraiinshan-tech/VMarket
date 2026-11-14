@@ -23,6 +23,27 @@ afterEach(() => {
 });
 
 describe('requestApi operations context', () => {
+  it('permits account details for Customer and Vendor without implicitly selecting a shop', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => Response.json({}));
+    vi.stubGlobal('fetch', fetchMock);
+    setWorkspaceUser({ ...user, roles: [...user.roles, 'admin'] });
+    for (const workspace of ['customer', 'vendor'] as const) {
+      selectWorkspace(workspace);
+      await requestApi('/me/account-details');
+      const headers = new Headers(fetchMock.mock.calls.at(-1)?.[1].headers);
+      expect(headers.get('X-VMarket-Workspace')).toBe(workspace);
+      expect(headers.has('X-VMarket-Shop-Id')).toBe(false);
+    }
+    selectWorkspace('admin');
+    await expect(requestApi('/me/account-details')).rejects.toThrow(
+      'Customer or Vendor',
+    );
+    setWorkspaceUser(null);
+    await expect(
+      requestApi('/me/account-details/avatar', { method: 'DELETE' }),
+    ).rejects.toThrow('Customer or Vendor');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
   it('blocks vendor applications outside Customer workspace and forwards export selectors', async () => {
     const fetchMock = vi.fn().mockResolvedValue(Response.json({}));
     vi.stubGlobal('fetch', fetchMock);

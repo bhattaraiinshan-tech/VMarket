@@ -215,11 +215,42 @@ describe('workspace-specific screens', () => {
       select(workspace);
       const fetchMock = vi
         .spyOn(globalThis, 'fetch')
-        .mockImplementation(async () => Response.json([]));
+        .mockImplementation(async (input) =>
+          Response.json(
+            String(input).endsWith('/me/account-details')
+              ? {
+                  workspace: 'vendor',
+                  first_name: 'Vendor',
+                  last_name: 'User',
+                  email: 'vendor@example.test',
+                  email_verified: true,
+                  phone: null,
+                  avatar_url: null,
+                  preferred_categories: [],
+                  communication_email: false,
+                  communication_sms: false,
+                  business_name: 'Vendor business',
+                  business_category: null,
+                  registration_number: null,
+                  payout_preference: null,
+                  business_description: null,
+                }
+              : [],
+          ),
+        );
       render(<IdentityPortal />);
 
+      if (workspace === 'vendor') {
+        expect(
+          await screen.findByLabelText('Registered business name'),
+        ).toHaveValue('Vendor business');
+      } else {
+        expect(
+          screen.queryByRole('heading', { name: 'Profile' }),
+        ).not.toBeInTheDocument();
+      }
       expect(
-        screen.queryByRole('heading', { name: 'Profile' }),
+        screen.queryByLabelText('Preferred shopping categories'),
       ).not.toBeInTheDocument();
       expect(
         screen.queryByRole('heading', { name: 'Delivery addresses' }),

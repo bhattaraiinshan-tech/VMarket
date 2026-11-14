@@ -2,6 +2,7 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -122,6 +123,34 @@ class CustomerProfile(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="profile")
+
+
+class AccountDetails(Base):
+    __tablename__ = "account_details"
+    __table_args__ = (
+        CheckConstraint(
+            "payout_preference IS NULL OR payout_preference IN ('manual', 'bank_transfer')",
+            name="ck_account_details_payout_preference",
+        ),
+    )
+
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    first_name: Mapped[str | None] = mapped_column(String(120))
+    last_name: Mapped[str | None] = mapped_column(String(120))
+    phone: Mapped[str | None] = mapped_column(String(32))
+    preferred_categories: Mapped[list[str]] = mapped_column(JSON, default=list)
+    communication_email: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    communication_sms: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    business_category: Mapped[str | None] = mapped_column(String(120))
+    registration_number: Mapped[str | None] = mapped_column(String(120))
+    payout_preference: Mapped[str | None] = mapped_column(String(20))
+    business_description: Mapped[str | None] = mapped_column(String(1000))
+    avatar_object_name: Mapped[str | None] = mapped_column(String(512))
+    avatar_content_type: Mapped[str | None] = mapped_column(String(32))
 
 
 class VendorProfile(Base):

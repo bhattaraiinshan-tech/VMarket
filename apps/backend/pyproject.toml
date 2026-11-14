@@ -13,6 +13,7 @@ dependencies = [
     "email-validator>=2.2,<3",
     "fastapi>=0.115,<1",
     "minio>=7.2,<8",
+    "pillow>=10.4,<13",
     "pydantic-settings>=2.8,<3",
     "python-multipart>=0.0.20,<1",
     "sqlalchemy[asyncio]>=2.0,<3",

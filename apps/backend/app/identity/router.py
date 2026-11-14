@@ -19,6 +19,7 @@ from app.catalog.models import Shop
 from app.core.config import get_settings
 from app.core.errors import APIError
 from app.db.session import get_session
+from app.identity.account_details import _details, _read
 from app.identity.dependencies import (
     SESSION_COOKIE,
     SESSION_DURATION,
@@ -33,6 +34,7 @@ from app.identity.dependencies import (
 )
 from app.identity.email import EmailDeliveryError, send_identity_email
 from app.identity.models import (
+    AccountDetails,
     AuditLog,
     AuthSession,
     CustomerProfile,
@@ -53,6 +55,7 @@ from app.identity.schemas import (
     AdminVendorApplicationRead,
     AuditLogRead,
     CustomerExportRead,
+    CustomerSettingsExport,
     DocumentRead,
     DocumentUrlRead,
     EmailRequest,
@@ -72,6 +75,7 @@ from app.identity.schemas import (
     VendorDecision,
     VendorExportRead,
     VendorProfileRead,
+    VendorSettingsExport,
     WorkspaceExportRead,
 )
 from app.identity.security import create_opaque_token, hash_password, hash_token, verify_password
@@ -513,8 +517,14 @@ async def update_me(
 ) -> UserRead:
     if user.profile is None:
         raise APIError(409, "profile_unavailable", "The customer profile is unavailable.")
+    await session.execute(select(User.id).where(User.id == user.id).with_for_update())
+    await session.refresh(user.profile)
     if body.full_name is not None:
         user.profile.full_name = body.full_name
+        details = await session.get(AccountDetails, user.id)
+        if details is not None:
+            details.first_name = None
+            details.last_name = None
     if "phone" in body.model_fields_set:
         user.profile.phone = body.phone
     try:
@@ -690,6 +700,9 @@ async def export_personal_data(
         return CustomerExportRead(
             account=account,
             profile=ProfileRead.model_validate(user.profile),
+            account_settings=CustomerSettingsExport.model_validate(
+                _read(context, await _details(session, user)).model_dump()
+            ),
             addresses=[AddressRead.model_validate(item) for item in addresses],
             vendor_applications=[
                 VendorApplicationRead.model_validate(item) for item in applications
@@ -702,6 +715,9 @@ async def export_personal_data(
             account=account,
             shop_id=context.shop.id,
             vendor_profile=VendorProfileRead.model_validate(user.vendor_profile),
+            account_settings=VendorSettingsExport.model_validate(
+                _read(context, await _details(session, user)).model_dump()
+            ),
             shop=ExportShopRead.model_validate(context.shop),
         )
     if context.workspace != "admin":

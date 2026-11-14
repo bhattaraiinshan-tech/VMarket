@@ -3,8 +3,6 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
-import type { NotificationInbox } from '@/lib/notification-inbox';
-import NotificationPopover from '@/components/notifications/notification-popover';
 import { useWorkspace } from '@/lib/workspace-context';
 import {
   Icon,
@@ -16,12 +14,10 @@ type NavItem = [string, string, IconName];
 
 export default function NotificationShell({
   children,
-  inbox,
   search,
   onSearch,
 }: {
   children: ReactNode;
-  inbox: NotificationInbox;
   search: string;
   onSearch: (value: string) => void;
 }) {
@@ -124,8 +120,7 @@ export default function NotificationShell({
                 className="min-w-0 flex-1 bg-transparent py-2.5 text-sm text-slate-800 outline-offset-4 placeholder:text-slate-400"
               />
             </label>
-            <div className="ml-auto flex items-center gap-4">
-              <NotificationPopover inbox={inbox} className="bg-slate-100" />
+            <div className="ml-auto">
               <Popover
                 align="right"
                 labelText="Your profile"

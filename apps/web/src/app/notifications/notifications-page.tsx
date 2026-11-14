@@ -61,11 +61,7 @@ function NotificationCenter({
   }
 
   return (
-    <NotificationShell
-      inbox={inbox}
-      search={inbox.search}
-      onSearch={inbox.changeSearch}
-    >
+    <NotificationShell search={inbox.search} onSearch={inbox.changeSearch}>
       <main className="m-2 min-h-[640px] rounded-2xl bg-[#fafafe] px-4 pb-10 pt-6 sm:m-4 sm:px-6 sm:pt-8 lg:ml-0 lg:px-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>

@@ -11,6 +11,7 @@ import {
   requestApi,
 } from '@/lib/api';
 import { browserStorageUrl } from '@/lib/network';
+import { OrderTrackingHistory } from '@/components/orders/order-presentation';
 import { DashboardIcon } from '../../customer-dashboard-shell';
 
 const labels: Record<string, string> = {
@@ -546,70 +547,10 @@ export default function ShipmentTrackingCard({
                   : 'Save delivery rating'}
             </button>
           </form>
-          <section aria-label="Tracking history" className="pt-6">
-            <h3 className="text-sm font-semibold text-gray-950">
-              Tracking History
-            </h3>
-            <p className="mt-1 text-xs text-gray-500">
-              Latest update first · Times shown in your local timezone
-            </p>
-            {history.length === 0 ? (
-              <p className="mt-5 rounded-lg bg-gray-50 p-4 text-sm text-gray-500">
-                No tracking events have been recorded yet.
-              </p>
-            ) : (
-              <ol aria-label="Fulfillment history" className="mt-6">
-                {history.map((event, index) => (
-                  <li
-                    key={event.id}
-                    aria-current={index === 0 ? 'step' : undefined}
-                    className="grid grid-cols-[minmax(0,100px)_20px_minmax(0,1fr)] gap-3 text-sm sm:grid-cols-[minmax(0,145px)_20px_minmax(0,1fr)] sm:gap-5"
-                  >
-                    <time
-                      dateTime={event.created_at}
-                      className="pb-7 text-xs leading-5 text-gray-600"
-                    >
-                      <span className="block font-medium text-gray-800">
-                        {new Date(event.created_at).toLocaleDateString(
-                          'en-GB',
-                          { day: '2-digit', month: 'short', year: 'numeric' },
-                        )}
-                      </span>
-                      <span>At {time(event.created_at)}</span>
-                    </time>
-                    <div
-                      aria-hidden="true"
-                      className="relative flex justify-center"
-                    >
-                      {index < history.length - 1 && (
-                        <span className="absolute bottom-0 top-2 w-px bg-gray-200" />
-                      )}
-                      <span
-                        className={`relative mt-1 h-3 w-3 rounded-full border-[3px] ${index === 0 ? (event.to_status === 'delivered' || event.to_status === 'return_rejected' ? 'border-emerald-100 bg-emerald-600 ring-2 ring-emerald-50' : 'border-blue-100 bg-blue-600 ring-2 ring-blue-50') : 'border-gray-100 bg-gray-500'}`}
-                      />
-                    </div>
-                    <div className="min-w-0 pb-7">
-                      <p
-                        className={`font-semibold ${index === 0 && shipment.status === 'delivered' ? 'text-emerald-800' : 'text-gray-800'}`}
-                      >
-                        {label(event.to_status)}
-                      </p>
-                      {event.location && (
-                        <p className="mt-1 text-xs leading-5 text-gray-600">
-                          At {event.location}
-                        </p>
-                      )}
-                      {event.note && (
-                        <p className="mt-1 text-xs leading-5 text-gray-500">
-                          {event.note}
-                        </p>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </section>
+          <OrderTrackingHistory
+            events={shipment.events}
+            status={shipment.status}
+          />
           <section
             aria-label="Items in this shipment"
             className="mt-3 border-t border-gray-200 pt-5"

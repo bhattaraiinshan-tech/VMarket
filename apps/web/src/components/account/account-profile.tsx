@@ -639,9 +639,11 @@ function ShopDetailsForm({
 export function AccountSecurity({
   email,
   workspace,
+  sessionsHref = '#security',
 }: {
   email: string;
   workspace: AccountWorkspace;
+  sessionsHref?: string;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -692,7 +694,7 @@ export function AccountSecurity({
         </button>
         <a
           className="mt-3 flex min-h-11 items-center text-sm font-semibold text-teal-900 underline"
-          href="#security"
+          href={sessionsHref}
         >
           Review signed-in devices
         </a>

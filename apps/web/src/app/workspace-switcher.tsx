@@ -77,6 +77,7 @@ export default function WorkspaceSwitcher({
         ? [
             ['/vendor', 'Vendor catalogue'],
             ['/vendor/orders', 'Fulfillment and payments'],
+            ['/vendor/profile', 'Profile and account settings'],
             ['/vendor/trade', 'Wholesale and stock transfers'],
             ['/vendor/reviews', 'Shop reviews'],
             ['/vendor/promotions', 'Shop promotions'],

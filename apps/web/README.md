@@ -34,6 +34,32 @@ provider supplies a skip-to-content link and keeps protected page content behind
 the existing workspace and shop checks. List screens should distinguish loading
 and failed requests from a successfully loaded empty list.
 
+### Vendor orders and profile
+
+`/vendor/orders`, `/vendor/orders/[id]` and `/vendor/profile` reuse the customer
+account sidebar, greeting, active borders, profile/security forms, order line
+items, status badges and tracking history. `vendor-shell.tsx` supplies the shared
+vendor wrapper; `components/orders/order-presentation.tsx` holds shared order UI.
+The existing Customer account remains at `/` (there is no `/account` route).
+
+History loads every 100-record page from `GET /api/v1/vendor/orders?offset=...`
+before applying status, search, date and sort filters. Records and detail IDs
+represent shop fulfillment shipments, not the customer-wide order. The new
+`GET /api/v1/vendor/orders/{fulfillment_id}` endpoint requires the selected shop
+and returns only its delivery snapshot, items, events and transactions. Backend
+ownership validation and tab-specific shop selection remain mandatory.
+
+Details retain confirmation, processing, cancellation, tracking milestones,
+cash collection, return decisions and refund recording through the existing
+audited fulfillment APIs. Cancellation requires confirmation. Account/shop
+switches clear drafts and discard stale responses.
+
+Printing produces a delivery **address** label, not prepaid courier postage.
+Payment details show only selected-shop records; customer-wide invoices are not
+exposed to vendors. Missing image/variant/courier data is not invented. Profile
+settings use the existing personal/business forms, selected-shop editor and
+password reset flow; signed-in sessions link to the existing root account.
+
 ### Support Center
 
 `/support` uses a responsive, purple-accented dashboard with grouped

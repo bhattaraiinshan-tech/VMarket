@@ -29,6 +29,7 @@ from app.operations.models import FraudReport, PlatformSettings, Promotion
 from app.orders.models import (
     CartItem,
     CustomerOrder,
+    FulfillmentOrder,
     OrderNotification,
     OrderStatusEvent,
     PaymentTransaction,
@@ -307,8 +308,66 @@ async def test_vendor_fulfillment_contains_only_delivery_snapshot(
     assert fulfillment["shipping_address"]["street_address"] == "1 Market Road"
     assert "label" not in fulfillment["shipping_address"]
     assert "customer_email" not in fulfillment
+    detail_url = f"/api/v1/vendor/orders/{fulfillment['id']}"
+    detail = await client.get(detail_url)
+    assert detail.status_code == 200
+    assert detail.json() == fulfillment
+    assert (await client.get("/api/v1/vendor/orders?offset=1")).json() == {
+        "items": [],
+        "total": 1,
+    }
+    assert (await client.get("/api/v1/vendor/orders?offset=-1")).status_code == 422
+    client.headers.pop("X-VMarket-Shop-Id")
+    assert (await client.get(detail_url)).status_code == 422
+    _sign_in(client, "customer")
+    assert (await client.get(detail_url)).status_code == 403
+    _sign_in(client, "vendor2")
+    assert (await client.get(detail_url)).status_code == 404
+    client.headers["X-VMarket-Shop-Id"] = str(ids["shop1"])
+    assert (await client.get(detail_url)).status_code == 404
     _sign_in(client, "vendor2")
     assert (await client.get("/api/v1/vendor/orders")).json()["items"] == []
+
+
+async def test_vendor_order_pagination_and_detail_beyond_first_page(
+    orders_client: OrdersClient,
+) -> None:
+    client, factory, ids = orders_client
+    await client.post(
+        "/api/v1/me/cart/items", json={"product_id": str(ids["product1"]), "quantity": 1}
+    )
+    result = await client.post(
+        "/api/v1/me/checkout",
+        json={"address_id": str(ids["address"]), "idempotency_key": "paged-history-100-records"},
+    )
+    assert result.status_code == 201
+    order_id = UUID(result.json()["id"])
+    async with factory() as session:
+        for index in range(101):
+            session.add(
+                FulfillmentOrder(
+                    order_id=order_id,
+                    shop_id=ids["shop1"],
+                    shop_name="First Shop",
+                    fulfillment_number=f"SHIP-HISTORY-{index}",
+                    subtotal=Decimal("100.25"),
+                    shipping_fee=Decimal("100.00"),
+                    created_at=datetime(2020, 1, 1, tzinfo=timezone.utc) + timedelta(days=index),
+                )
+            )
+        await session.commit()
+    _sign_in(client, "vendor1")
+    first = (await client.get("/api/v1/vendor/orders")).json()
+    second = (await client.get("/api/v1/vendor/orders?offset=100")).json()
+    assert first["total"] == second["total"] == 102
+    assert len(first["items"]) == 100
+    assert len(second["items"]) == 2
+    assert len({item["id"] for item in first["items"] + second["items"]}) == 102
+    old = second["items"][-1]
+    assert old["fulfillment_number"] == "SHIP-HISTORY-0"
+    detail = await client.get(f"/api/v1/vendor/orders/{old['id']}")
+    assert detail.status_code == 200
+    assert detail.json() == old
 
 
 @pytest.mark.asyncio

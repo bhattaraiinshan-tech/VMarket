@@ -4,42 +4,28 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 
 import { type Order, type FulfillmentOrder, requestApi } from '@/lib/api';
-import { browserStorageUrl } from '@/lib/network';
+import {
+  OrderLineItem,
+  OrderStatusFilters,
+  OrderStatusBadge as StatusBadge,
+  orderControl,
+  type OrderFilter as StatusFilter,
+  matchesOrderStatus,
+  orderDateLabel as dateLabel,
+  orderStatusLabel as statusLabel,
+} from '@/components/orders/order-presentation';
 import { useWorkspace } from '@/lib/workspace-context';
 import CustomerDashboardShell, {
   DashboardIcon,
 } from '../customer-dashboard-shell';
 
-const filters = [
-  'All orders',
-  'Processing',
-  'Shipped',
-  'Delivered',
-  'Canceled',
-] as const;
-type StatusFilter = (typeof filters)[number];
 const cancellable = ['pending', 'confirmed', 'processing'];
-const statusLabel = (status: string) =>
-  status.replaceAll('_', ' ').replaceAll('cancelled', 'canceled');
-const dateLabel = (date: string) =>
-  new Date(date).toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
 
 function matchesStatus(order: Order, filter: StatusFilter) {
   return (
     filter === 'All orders' ||
     order.fulfillments.some((shipment) =>
-      filter === 'Processing'
-        ? cancellable.includes(shipment.status)
-        : filter === 'Shipped'
-          ? ['shipped', 'picked_up', 'in_transit', 'out_for_delivery'].includes(
-              shipment.status,
-            )
-          : shipment.status ===
-            (filter === 'Canceled' ? 'cancelled' : filter.toLowerCase()),
+      matchesOrderStatus(shipment.status, filter),
     )
   );
 }
@@ -61,28 +47,6 @@ function shipmentMessage(shipment: FulfillmentOrder) {
   if (shipment.status === 'pending')
     return 'Waiting for the shop to confirm your order.';
   return 'The shop is preparing your items for dispatch.';
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const color =
-    status === 'delivered' || status === 'completed'
-      ? 'bg-emerald-50 text-emerald-800'
-      : ['shipped', 'picked_up', 'in_transit', 'out_for_delivery'].includes(
-            status,
-          )
-        ? 'bg-blue-50 text-blue-800'
-        : status.includes('cancelled')
-          ? 'bg-red-50 text-red-800'
-          : status === 'pending'
-            ? 'bg-amber-50 text-amber-800'
-            : 'bg-violet-50 text-violet-800';
-  return (
-    <span
-      className={`inline-flex rounded-md px-2.5 py-1 text-xs font-semibold capitalize ${color}`}
-    >
-      {statusLabel(status)}
-    </span>
-  );
 }
 
 export default function CustomerOrders() {
@@ -233,8 +197,7 @@ function OrdersDashboard() {
     }
   }
 
-  const control =
-    'rounded-lg border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-gray-700';
+  const control = orderControl;
 
   return (
     <CustomerDashboardShell active="/orders">
@@ -262,29 +225,15 @@ function OrdersDashboard() {
         </Link>
       </header>
 
-      <div
-        aria-label="Order status filters"
-        className="flex gap-5 overflow-x-auto border-b border-[#E5E7EB]"
-      >
-        {filters.map((status) => (
-          <button
-            type="button"
-            key={status}
-            aria-pressed={filter === status}
-            onClick={() => setFilter(status)}
-            className={`flex shrink-0 items-center gap-2 border-b-2 px-1 pb-4 pt-2 text-sm font-semibold ${filter === status ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
-          >
-            {status}
-            <span
-              className={`rounded-md px-2 py-0.5 text-xs ${filter === status ? 'bg-blue-100 text-blue-800' : 'bg-gray-200 text-gray-600'}`}
-            >
-              {loaded
-                ? orders.filter((order) => matchesStatus(order, status)).length
-                : '-'}
-            </span>
-          </button>
-        ))}
-      </div>
+      <OrderStatusFilters
+        selected={filter}
+        onChange={setFilter}
+        count={(status) =>
+          loaded
+            ? orders.filter((order) => matchesStatus(order, status)).length
+            : null
+        }
+      />
 
       <div className="my-5 flex flex-wrap items-center gap-3">
         <label
@@ -485,53 +434,7 @@ function OrdersDashboard() {
                   <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_200px]">
                     <ul className="space-y-5">
                       {shipment.items.map((item) => (
-                        <li
-                          key={item.id}
-                          className="grid grid-cols-[80px_minmax(0,1fr)] items-start gap-4 sm:flex sm:items-center"
-                        >
-                          {item.image_url ? (
-                            <div
-                              role="img"
-                              aria-label={item.image_alt || item.product_name}
-                              className="h-20 w-20 shrink-0 rounded-lg border border-gray-200 bg-gray-50 bg-contain bg-center bg-no-repeat"
-                              style={{
-                                backgroundImage: `url("${browserStorageUrl(item.image_url)}")`,
-                              }}
-                            />
-                          ) : (
-                            <div className="grid h-20 w-20 shrink-0 place-items-center rounded-lg border border-gray-200 bg-gray-50 px-2 text-center text-[10px] text-gray-500">
-                              Image not provided
-                            </div>
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <h3 className="text-sm font-semibold text-gray-950">
-                              {item.product_name}
-                            </h3>
-                            <p className="mt-1.5 text-xs leading-5 text-gray-500">
-                              {item.variant_name && (
-                                <>
-                                  Variant: {item.variant_name}
-                                  <span className="mx-2 text-gray-300">|</span>
-                                </>
-                              )}
-                              Quantity: {item.quantity}
-                            </p>
-                            <p className="mt-1 text-xs text-gray-500">
-                              SKU: {item.sku}
-                            </p>
-                          </div>
-                          <div className="col-start-2 text-sm sm:min-w-36">
-                            <p className="font-semibold text-gray-950">
-                              NPR {item.line_total}
-                            </p>
-                            <p className="mt-1 text-xs text-gray-500">
-                              NPR {item.unit_price} each
-                            </p>
-                            <p className="mt-2 text-xs text-gray-500">
-                              Cash on delivery
-                            </p>
-                          </div>
-                        </li>
+                        <OrderLineItem key={item.id} item={item} />
                       ))}
                     </ul>
                     <div className="flex flex-col items-start border-t border-gray-100 pt-4 xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0">

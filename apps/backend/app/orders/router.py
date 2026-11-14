@@ -4,7 +4,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import Select, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1062,6 +1062,7 @@ async def save_delivery_feedback(
 async def list_vendor_orders(
     shop: Annotated[Shop, Depends(get_selected_shop)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> VendorFulfillmentPage:
     total = await session.scalar(
         select(func.count())
@@ -1071,13 +1072,24 @@ async def list_vendor_orders(
     orders = await session.scalars(
         select(FulfillmentOrder)
         .where(FulfillmentOrder.shop_id == shop.id)
-        .order_by(FulfillmentOrder.created_at.desc())
+        .order_by(FulfillmentOrder.created_at.desc(), FulfillmentOrder.id.desc())
+        .offset(offset)
         .limit(100)
     )
     return VendorFulfillmentPage(
         items=[await _fulfillment_read(session, order) for order in orders],
         total=total or 0,
     )
+
+
+@router.get("/vendor/orders/{fulfillment_id}", response_model=FulfillmentOrderRead)
+async def get_vendor_order(
+    fulfillment_id: UUID,
+    shop: Annotated[Shop, Depends(get_selected_shop)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FulfillmentOrderRead:
+    fulfillment = await _vendor_fulfillment(session, shop, fulfillment_id)
+    return await _fulfillment_read(session, fulfillment)
 
 
 @router.patch(

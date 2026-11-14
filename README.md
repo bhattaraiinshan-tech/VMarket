@@ -387,7 +387,7 @@ inside any authenticated header (within the workspace shell). It fetches the lat
 shows the newest five (both read and unread) in a scrollable preview, and displays a red unread badge.
 Counts cover that recent inbox, not an unlimited notification history. The `className` prop customizes
 the bell; the optional `inbox` prop accepts the result of `useNotificationInbox()` to share state with
-a parent, as on the notification center. The hook lives in `lib/notification-inbox.ts`.
+a parent. The hook lives in `lib/notification-inbox.ts`.
 It refreshes on mount, bell opening, window focus, and every 60 seconds; successful mutations
 invalidate other mounted previews. Individual clicks persist read status before navigating to the
 workspace-scoped order/conversation; notices without a destination are marked read in place.
@@ -395,7 +395,9 @@ Failed writes keep the preview open and show an error without navigating.
 The popover supports keyboard activation, Escape with focus restoration, outside-pointer/focus dismissal,
 and viewport-constrained positioning. Guests and vendors without an explicitly selected shop do not
 fetch an inbox. Customer account/messages, storefront/product, cart, and standard workspace headers use
-the same component; the notification dashboard shares its existing inbox instead of fetching twice.
+the same component. Only `/notifications` omits the header bell and duplicate workspace-bar brand text;
+its sidebar branding, search, profile menu, workspace/shop selectors, and list unread count remain.
+Headers and notification bells on other routes are unchanged.
 
 Checkout currently supports cash on delivery. Shipping is a fixed NPR 100 per vendor fulfillment, so a multi-vendor
 cart pays one delivery fee per shop. Prices and totals are calculated from server-side catalogue data using decimal

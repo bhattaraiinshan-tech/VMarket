@@ -25,6 +25,7 @@ function installFetch(
     .mockImplementation(async (input, init) => {
       const url = String(input);
       if (url.endsWith('/me')) return Response.json(testUser);
+      if (url.endsWith('/me/notifications')) return Response.json([]);
       if (url.endsWith('/vendor/shops')) {
         if (init?.method === 'POST')
           owned = [
@@ -66,6 +67,56 @@ afterEach(() => {
 });
 
 describe('workspace selection', () => {
+  it.each(['/', '/orders', '/messages'])(
+    'restores the standard header brand and bell when leaving notifications for %s',
+    async (path) => {
+      navigation.path = '/notifications';
+      installFetch();
+      const view = render(
+        <WorkspaceProvider>
+          <main>Page content</main>
+        </WorkspaceProvider>,
+      );
+      await screen.findByText('Page content');
+      expect(
+        screen.queryByRole('link', { name: "Vendor's Market" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /^Notifications,/ }),
+      ).not.toBeInTheDocument();
+
+      navigation.path = path;
+      view.rerender(
+        <WorkspaceProvider>
+          <main>Page content</main>
+        </WorkspaceProvider>,
+      );
+      expect(
+        await screen.findByRole('button', { name: 'Notifications, 0 unread' }),
+      ).toHaveAttribute('aria-expanded', 'false');
+      expect(
+        screen.getByRole('link', { name: "Vendor's Market" }),
+      ).toHaveAttribute('href', '/');
+
+      navigation.path = '/notifications';
+      view.rerender(
+        <WorkspaceProvider>
+          <main>Page content</main>
+        </WorkspaceProvider>,
+      );
+      await screen.findByText('Page content');
+      expect(
+        screen.queryByRole('link', { name: "Vendor's Market" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /^Notifications,/ }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('combobox', { name: 'Workspace' }),
+      ).toBeInTheDocument();
+    },
+  );
+
   it('keeps workspace and explicit shop controls while the notification shell owns navigation', async () => {
     navigation.path = '/notifications';
     installFetch();
@@ -80,6 +131,12 @@ describe('workspace selection', () => {
     expect(
       screen.getByRole('combobox', { name: 'Workspace' }),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: "Vendor's Market" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^Notifications,/ }),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('navigation', { name: 'customer navigation' }),
     ).not.toBeInTheDocument();

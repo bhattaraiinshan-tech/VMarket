@@ -121,6 +121,16 @@ describe('notification center', () => {
     expect(screen.getByText('#254845')).toHaveClass('text-violet-700');
     expect(screen.getByText('3 hours ago')).toBeInTheDocument();
     expect(screen.getAllByText('Test Customer').length).toBeGreaterThan(0);
+    expect(
+      screen.queryByRole('button', { name: /^Notifications,/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole('banner')).queryByText("Vendor's Market"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: "Vendor's Market" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Your profile')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Notifications' })).toHaveAttribute(
       'aria-current',
       'page',
@@ -171,18 +181,14 @@ describe('notification center', () => {
     expect(
       await screen.findByText('2 notifications marked as read.'),
     ).toBeInTheDocument();
-    expect(
-      screen.getByLabelText('Notifications, 0 unread'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('0 unread')).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('Select Order placed'));
     openActions();
     fireEvent.click(screen.getByRole('button', { name: 'Mark as Unread' }));
     expect(
       await screen.findByText('1 notification marked as unread.'),
     ).toBeInTheDocument();
-    expect(
-      screen.getByLabelText('Notifications, 1 unread'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('1 unread')).toBeInTheDocument();
     expect(requestApi).toHaveBeenLastCalledWith(
       '/me/notifications/batch',
       expect.objectContaining({
@@ -227,9 +233,7 @@ describe('notification center', () => {
       'Update was denied.',
     );
     expect(screen.getByLabelText('Select Order placed')).toBeChecked();
-    expect(
-      screen.getByLabelText('Notifications, 1 unread'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('1 unread')).toBeInTheDocument();
   });
 
   it('reports load failures and retries without showing a successful empty state', async () => {

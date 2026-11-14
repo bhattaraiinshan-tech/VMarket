@@ -16,9 +16,11 @@ import {
 export default function WorkspaceSwitcher({
   accountHeader = false,
   hideNavigation = false,
+  hideBrand = false,
 }: {
   accountHeader?: boolean;
   hideNavigation?: boolean;
+  hideBrand?: boolean;
 }) {
   const { user, workspace, shopId } = useWorkspace();
   const { shops, loading, error: shopError, refresh } = useWorkspaceShops();
@@ -220,7 +222,7 @@ export default function WorkspaceSwitcher({
       className={`border-b px-5 py-4 text-sm text-slate-950 sm:px-8 ${workspace === 'customer' ? 'border-slate-200 bg-white' : 'border-emerald-200 bg-emerald-50'}`}
     >
       <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-5 gap-y-3">
-        {workspace === 'customer' && (
+        {workspace === 'customer' && !hideBrand && (
           <Link
             className="text-lg font-bold tracking-tight text-emerald-950"
             href="/"

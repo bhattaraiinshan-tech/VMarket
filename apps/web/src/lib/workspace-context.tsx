@@ -43,7 +43,12 @@ export const useWorkspaceShops = () => useContext(ShopContext);
 export function workspaceRouteRequirement(path: string) {
   if (path === '/vendor' || path.startsWith('/vendor/')) return 'vendor';
   if (path === '/admin' || path.startsWith('/admin/')) return 'admin';
-  if (path === '/cart' || path === '/orders' || path.startsWith('/orders/'))
+  if (
+    path === '/cart' ||
+    path === '/wishlist' ||
+    path === '/orders' ||
+    path.startsWith('/orders/')
+  )
     return 'customer';
   if (path === '/messages' || path.startsWith('/messages/')) return 'messages';
   if (path === '/notifications' || path === '/support') return 'shared';
@@ -228,6 +233,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
           accountHeader={
             mode === 'customer' &&
             (path === '/' ||
+              path === '/orders' ||
+              path.startsWith('/orders/') ||
+              path === '/wishlist' ||
               path === '/messages' ||
               path.startsWith('/messages/'))
           }

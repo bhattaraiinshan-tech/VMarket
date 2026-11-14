@@ -114,7 +114,8 @@ class FulfillmentOrder(Base):
             name="ck_fulfillment_orders_commission_rate",
         ),
         CheckConstraint(
-            "status IN ('pending', 'confirmed', 'processing', 'shipped', 'delivered', "
+            "status IN ('pending', 'confirmed', 'processing', 'shipped', 'picked_up', "
+            "'in_transit', 'out_for_delivery', 'delivered', "
             "'cancelled', 'return_requested', 'returned')",
             name="ck_fulfillment_orders_status",
         ),
@@ -141,6 +142,9 @@ class FulfillmentOrder(Base):
         Numeric(14, 2), default=Decimal("0.00"), server_default="0"
     )
     tracking_number: Mapped[str | None] = mapped_column(String(120))
+    courier_name: Mapped[str | None] = mapped_column(String(120))
+    support_phone: Mapped[str | None] = mapped_column(String(32))
+    support_email: Mapped[str | None] = mapped_column(String(254))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -177,6 +181,27 @@ class OrderItem(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class DeliveryFeedback(Base):
+    __tablename__ = "delivery_feedback"
+    __table_args__ = (
+        CheckConstraint("rating BETWEEN 1 AND 5", name="ck_delivery_feedback_rating"),
+    )
+
+    fulfillment_order_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("fulfillment_orders.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    customer_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    rating: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class OrderStatusEvent(Base):
     __tablename__ = "order_status_events"
     __table_args__ = (
@@ -196,6 +221,7 @@ class OrderStatusEvent(Base):
     from_status: Mapped[str | None] = mapped_column(String(32))
     to_status: Mapped[str] = mapped_column(String(32))
     note: Mapped[str | None] = mapped_column(Text)
+    location: Mapped[str | None] = mapped_column(String(180))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

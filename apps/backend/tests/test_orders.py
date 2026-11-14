@@ -480,6 +480,58 @@ async def test_cart_items_expose_primary_product_image(orders_client: OrdersClie
 
 
 @pytest.mark.asyncio
+async def test_order_history_images_preserve_purchase_snapshots(
+    orders_client: OrdersClient,
+) -> None:
+    client, factory, ids = orders_client
+    await _add_cart_item(client, ids["product1"], 1)
+    await _add_cart_item(client, ids["product2"], 1, ids["variant"])
+    placed = await _place_order(client, ids["address"])
+    assert placed.status_code == 201
+    async with factory() as session:
+        product = await session.get(Product, ids["product1"])
+        assert product is not None
+        product.name = "Renamed Basket"
+        product.price = Decimal("999.00")
+        session.add_all(
+            [
+                ProductImage(
+                    product_id=ids["product1"],
+                    object_name="products/back.jpg",
+                    alt_text="Back",
+                    sort_order=1,
+                ),
+                ProductImage(
+                    product_id=ids["product1"],
+                    object_name="products/front image.jpg",
+                    alt_text="",
+                    sort_order=0,
+                ),
+            ]
+        )
+        await session.commit()
+    response = await client.get("/api/v1/me/orders")
+    assert response.status_code == 200
+    items = {
+        item["product_name"]: item
+        for shipment in response.json()[0]["fulfillments"]
+        for item in shipment["items"]
+    }
+    assert items["Woven Basket"]["image_url"].endswith("/products/front%20image.jpg")
+    assert items["Woven Basket"]["image_alt"] == "Woven Basket"
+    assert items["Woven Basket"]["unit_price"] == "100.25"
+    assert items["Clay Cup"]["image_url"] is None
+    assert items["Clay Cup"]["variant_name"] == "Blue"
+    _sign_in(client, "vendor1")
+    client.headers["X-VMarket-Workspace"] = "customer"
+    client.headers.pop("X-VMarket-Shop-Id")
+    assert (await client.get("/api/v1/me/orders")).json() == []
+    assert (
+        await client.get(f"/api/v1/me/orders/{placed.json()['id']}")
+    ).status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_checkout_splits_vendor_orders_reserves_stock_and_is_idempotent(
     orders_client: OrdersClient,
 ) -> None:
@@ -495,7 +547,8 @@ async def test_checkout_splits_vendor_orders_reserves_stock_and_is_idempotent(
     assert cart.status_code == 200
     assert cart.json()["item_count"] == 3
     assert cart.json()["subtotal"] == "250.60"
-    basket, cup = cart.json()["items"]
+    cart_items = {item["sku"]: item for item in cart.json()["items"]}
+    basket, cup = cart_items["BASKET-ORDERS"], cart_items["CUP-ORDERS-BLUE"]
     assert basket["sku"] == "BASKET-ORDERS"
     assert basket["product_slug"] == "woven-basket-orders"
     assert basket["image_url"] is None
@@ -511,6 +564,8 @@ async def test_checkout_splits_vendor_orders_reserves_stock_and_is_idempotent(
     assert len(order["fulfillments"]) == 2
     assert {item["shop_name"] for item in order["fulfillments"]} == {"First Shop", "Second Shop"}
     assert all(item["status"] == "pending" for item in order["fulfillments"])
+    assert all(item["delivery_feedback"] is None for item in order["fulfillments"])
+    assert all(item["courier_name"] is None for item in order["fulfillments"])
 
     repeated = await _place_order(client, ids["address"])
     assert repeated.status_code == 201

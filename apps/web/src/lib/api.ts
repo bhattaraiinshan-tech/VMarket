@@ -278,6 +278,8 @@ export type OrderItem = {
   quantity: number;
   unit_price: string;
   line_total: string;
+  image_url?: string | null;
+  image_alt?: string | null;
 };
 
 export type OrderEvent = {
@@ -286,6 +288,24 @@ export type OrderEvent = {
   to_status: string;
   note: string | null;
   created_at: string;
+  location?: string | null;
+};
+
+export type DeliveryFeedback = {
+  rating: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FulfillmentStatusUpdate = {
+  status: string;
+  tracking_number?: string;
+  courier_name?: string | null;
+  location?: string | null;
+  support_phone?: string | null;
+  support_email?: string | null;
+  note?: string | null;
+  cash_collected?: boolean;
 };
 
 export type PaymentTransaction = {
@@ -311,6 +331,12 @@ export type FulfillmentOrder = {
   commission_rate_bps: number;
   commission_amount: string;
   tracking_number: string | null;
+  courier_name?: string | null;
+  support_phone?: string | null;
+  support_email?: string | null;
+  delivery_feedback?: DeliveryFeedback | null;
+  return_deadline?: string | null;
+  can_request_return?: boolean;
   shipping_address: Record<string, string | null>;
   created_at: string;
   updated_at: string;

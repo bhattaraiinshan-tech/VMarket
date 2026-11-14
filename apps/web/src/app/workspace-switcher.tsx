@@ -62,6 +62,7 @@ export default function WorkspaceSwitcher({
           ['/marketplace', 'Marketplace'],
           ['/cart', 'Cart'],
           ['/orders', 'Customer orders'],
+          ['/wishlist', 'Wishlist'],
           ['/messages', 'Messages'],
           ['/notifications', 'Notifications'],
           ['/support', 'Support and disputes'],
@@ -91,7 +92,7 @@ export default function WorkspaceSwitcher({
     return (
       <header
         aria-label="Workspace selection"
-        className="border-b border-slate-200 bg-white px-5 py-3 text-sm text-slate-950 sm:px-8"
+        className="border-b border-slate-200 bg-white px-5 py-3 text-sm text-slate-950 sm:px-8 print:hidden"
       >
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 sm:gap-5">
           <Link
@@ -189,6 +190,9 @@ export default function WorkspaceSwitcher({
               Your account
             </summary>
             <div className="absolute right-0 z-20 mt-2 w-64 max-w-[calc(100vw-2.5rem)] rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+              <p className="mb-3 text-sm font-semibold text-slate-950">
+                {user.profile?.full_name || 'Customer'}
+              </p>
               <label className="block font-semibold">
                 Workspace
                 <select

@@ -14,8 +14,34 @@ and variants, public MinIO product images, moderated product listings, searchabl
 shop discovery, product details, and customer wishlists. Retail ordering adds persistent customer carts, server-validated
 checkout, database-locked inventory reservation, vendor-specific fulfillment orders, order history, immutable status
 events, delivery tracking numbers, customer/vendor notifications, invoice records, and cash-on-delivery transactions.
-Customers can cancel before dispatch and request a return within seven days after delivery. A returned cash-on-delivery
+Customers can cancel before dispatch and request a return within the platform's configured window after delivery
+(seven days by default). A returned cash-on-delivery
 order creates a refund-due ledger entry that the fulfilling vendor records when cash is refunded.
+The customer My Orders dashboard at `/orders` includes status counts, product/order/status search, newest/oldest sorting,
+date and shop filters, per-shop shipment tracking, cancellation confirmation, and invoice viewing. Status filters match
+individual shipments, so a multi-shop order may appear in more than one filter. Images use the current primary catalog
+photo (or an explicit missing-image placeholder); purchased names, variants, quantities, and prices remain order snapshots.
+Delivery estimates and separate color/size fields are not currently supplied by the order API. Cash on delivery is the
+only supported payment method. Dashboard Settings opens the existing account controls at `/`; `/wishlist` displays real
+saved products and supports removal.
+Order details at `/orders/[orderId]` use one tracking card per shop shipment, with the purchased delivery address,
+vendor support contacts, courier name/tracking number, and newest-first status history. Vendors record courier details,
+public support phone/email, event locations, and optional picked-up, in-transit and out-for-delivery milestones through
+`/vendor/orders`. These are vendor-reported updates, not a live courier integration; unrecorded milestones and locations
+are never synthesized. Historical shipments can still move directly from shipped to delivered.
+After a recorded delivery, customers can save or update a separate 1–5 delivery rating using
+`PUT /api/v1/me/fulfillment-orders/{id}/delivery-feedback`; the rating persists independently of product reviews and
+does not modify the shipment timeline. Return eligibility/deadlines come from the server's current return policy.
+Exchanges remain unavailable. Vendor contact information is explicitly supplied for that shipment, never inferred
+from a private account email or phone.
+
+Before using delivery tracking, apply revision `0010_delivery_tracking` with
+`alembic -c apps\backend\alembic.ini upgrade head` and restart the backend. Back up the database first.
+The migration preserves existing orders and history with nullable new metadata. Downgrade refuses to discard recorded
+tracking metadata, new milestone history, or delivery feedback; an operator must export and reconcile those records
+before rollback. Migration tests use a random isolated PostgreSQL schema via `VMARKET_MIGRATION_TEST_DATABASE_URL`;
+they never migrate the application schema.
+
 Phase 5 adds customer-to-vendor conversations with durable message history, unread counts, in-app notifications,
 WebSocket updates, and optional product/order context. Customers can review products only after a related fulfillment is
 delivered; reviews enter an administrator moderation queue, can be reported, and support vendor responses. Customers and

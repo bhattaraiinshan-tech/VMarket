@@ -25,6 +25,7 @@ from app.operations.models import PlatformSettings, Promotion
 from app.orders.models import (
     CartItem,
     CustomerOrder,
+    DeliveryFeedback,
     FulfillmentOrder,
     OrderItem,
     OrderNotification,
@@ -37,6 +38,8 @@ from app.orders.schemas import (
     CartItemRead,
     CartRead,
     CheckoutCreate,
+    DeliveryFeedbackCreate,
+    DeliveryFeedbackRead,
     FulfillmentOrderRead,
     FulfillmentStatusUpdate,
     InvoiceRead,
@@ -151,6 +154,30 @@ async def _order_read(session: AsyncSession, order: CustomerOrder) -> OrderRead:
     )
 
 
+async def _return_deadline(session: AsyncSession, fulfillment_id: UUID) -> datetime | None:
+    delivered_at = await session.scalar(
+        select(OrderStatusEvent.created_at)
+        .where(
+            OrderStatusEvent.fulfillment_order_id == fulfillment_id,
+            OrderStatusEvent.to_status == "delivered",
+        )
+        .order_by(OrderStatusEvent.created_at.desc())
+        .limit(1)
+    )
+    if delivered_at is None:
+        return None
+    if delivered_at.tzinfo is None:
+        delivered_at = delivered_at.replace(tzinfo=timezone.utc)
+    settings = await session.get(PlatformSettings, 1)
+    if settings is None:
+        raise APIError(
+            503,
+            "platform_settings_unavailable",
+            "Platform settings are unavailable. Apply the latest database migration.",
+        )
+    return delivered_at + timedelta(days=settings.return_window_days)
+
+
 async def _fulfillment_read(
     session: AsyncSession, fulfillment: FulfillmentOrder
 ) -> FulfillmentOrderRead:
@@ -178,6 +205,35 @@ async def _fulfillment_read(
             .order_by(PaymentTransaction.created_at, PaymentTransaction.id)
         )
     )
+    product_ids = {item.product_id for item in items if item.product_id is not None}
+    images: dict[UUID, ProductImage] = {}
+    if product_ids:
+        for image in await session.scalars(
+            select(ProductImage)
+            .where(ProductImage.product_id.in_(product_ids))
+            .order_by(
+                ProductImage.product_id,
+                ProductImage.sort_order,
+                ProductImage.created_at,
+                ProductImage.id,
+            )
+        ):
+            images.setdefault(image.product_id, image)
+    item_reads = []
+    for item in items:
+        read = OrderItemRead.model_validate(item)
+        primary_image = images.get(item.product_id) if item.product_id else None
+        read.image_url = public_object_url(primary_image.object_name) if primary_image else None
+        read.image_alt = (
+            (primary_image.alt_text or item.product_name) if primary_image else item.product_name
+        )
+        item_reads.append(read)
+    feedback = await session.get(DeliveryFeedback, fulfillment.id)
+    deadline = (
+        await _return_deadline(session, fulfillment.id)
+        if fulfillment.status == "delivered"
+        else None
+    )
     return FulfillmentOrderRead(
         id=fulfillment.id,
         order_id=fulfillment.order_id,
@@ -191,6 +247,12 @@ async def _fulfillment_read(
         commission_rate_bps=fulfillment.commission_rate_bps,
         commission_amount=fulfillment.commission_amount,
         tracking_number=fulfillment.tracking_number,
+        courier_name=fulfillment.courier_name,
+        support_phone=fulfillment.support_phone,
+        support_email=fulfillment.support_email,
+        delivery_feedback=DeliveryFeedbackRead.model_validate(feedback) if feedback else None,
+        return_deadline=deadline,
+        can_request_return=deadline is not None and deadline >= datetime.now(timezone.utc),
         shipping_address={
             key: order.shipping_address.get(key)
             for key in (
@@ -205,7 +267,7 @@ async def _fulfillment_read(
         },
         created_at=fulfillment.created_at,
         updated_at=fulfillment.updated_at,
-        items=[OrderItemRead.model_validate(item) for item in items],
+        items=item_reads,
         events=[OrderEventRead.model_validate(item) for item in events],
         transactions=[PaymentTransactionRead.model_validate(item) for item in transactions],
     )
@@ -358,6 +420,7 @@ async def _record_status_change(
             from_status=previous_status,
             to_status=next_status,
             note=note,
+            created_at=datetime.now(timezone.utc),
         )
     )
     order = await session.get(CustomerOrder, fulfillment.order_id)
@@ -928,30 +991,12 @@ async def request_return(
     order = await _customer_order(session, user, fulfillment.order_id)
     if fulfillment.status != "delivered":
         raise APIError(409, "return_unavailable", "Only delivered items can be returned.")
-    delivered_event = await session.scalar(
-        select(OrderStatusEvent)
-        .where(
-            OrderStatusEvent.fulfillment_order_id == fulfillment.id,
-            OrderStatusEvent.to_status == "delivered",
-        )
-        .order_by(OrderStatusEvent.created_at.desc())
-    )
-    delivered_at = delivered_event.created_at if delivered_event is not None else None
-    if delivered_at is not None and delivered_at.tzinfo is None:
-        delivered_at = delivered_at.replace(tzinfo=timezone.utc)
-    settings = await session.scalar(select(PlatformSettings).where(PlatformSettings.id == 1))
-    if settings is None:
-        raise APIError(
-            503,
-            "platform_settings_unavailable",
-            "Platform settings are unavailable. Apply the latest database migration.",
-        )
-    return_window = timedelta(days=settings.return_window_days)
-    if delivered_at is None or delivered_at < datetime.now(timezone.utc) - return_window:
+    deadline = await _return_deadline(session, fulfillment.id)
+    if deadline is None or deadline < datetime.now(timezone.utc):
         raise APIError(
             409,
             "return_window_expired",
-            f"Returns must be requested within {settings.return_window_days} days of delivery.",
+            "The return window for this delivery has expired or delivery has not been recorded.",
         )
     await _record_status_change(
         session,
@@ -971,6 +1016,45 @@ async def request_return(
     await session.commit()
     await session.refresh(order)
     return await _order_read(session, order)
+
+
+@router.put(
+    "/me/fulfillment-orders/{fulfillment_id}/delivery-feedback",
+    response_model=DeliveryFeedbackRead,
+)
+async def save_delivery_feedback(
+    fulfillment_id: UUID,
+    body: DeliveryFeedbackCreate,
+    user: Annotated[User, Depends(get_current_customer)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> DeliveryFeedbackRead:
+    fulfillment = await session.scalar(
+        select(FulfillmentOrder).where(FulfillmentOrder.id == fulfillment_id).with_for_update()
+    )
+    if fulfillment is None:
+        raise APIError(404, "fulfillment_not_found", "The fulfillment order was not found.")
+    await _customer_order(session, user, fulfillment.order_id)
+    delivered = await session.scalar(
+        select(OrderStatusEvent.id)
+        .where(
+            OrderStatusEvent.fulfillment_order_id == fulfillment.id,
+            OrderStatusEvent.to_status == "delivered",
+        )
+        .limit(1)
+    )
+    if delivered is None:
+        raise APIError(409, "delivery_feedback_unavailable", "Rate delivery after it is completed.")
+    feedback = await session.get(DeliveryFeedback, fulfillment.id)
+    if feedback is None:
+        feedback = DeliveryFeedback(
+            fulfillment_order_id=fulfillment.id, customer_id=user.id, rating=body.rating
+        )
+        session.add(feedback)
+    else:
+        feedback.rating = body.rating
+    await session.commit()
+    await session.refresh(feedback)
+    return DeliveryFeedbackRead.model_validate(feedback)
 
 
 @router.get("/vendor/orders", response_model=VendorFulfillmentPage)
@@ -1010,7 +1094,10 @@ async def update_fulfillment_status(
         "pending": {"confirmed", "cancelled"},
         "confirmed": {"processing", "cancelled"},
         "processing": {"shipped", "cancelled"},
-        "shipped": {"delivered"},
+        "shipped": {"picked_up", "in_transit", "out_for_delivery", "delivered"},
+        "picked_up": {"in_transit", "out_for_delivery", "delivered"},
+        "in_transit": {"out_for_delivery", "delivered"},
+        "out_for_delivery": {"delivered"},
         "return_requested": {"returned", "return_rejected"},
     }
     if body.status not in transitions.get(fulfillment.status, set()):
@@ -1028,6 +1115,9 @@ async def update_fulfillment_status(
         await _restock_fulfillment(session, fulfillment.id)
     if body.status == "shipped":
         fulfillment.tracking_number = body.tracking_number
+    for field in ("courier_name", "support_phone", "support_email"):
+        if field in body.model_fields_set:
+            setattr(fulfillment, field, getattr(body, field))
 
     previous_status = fulfillment.status
     recorded_status = body.status
@@ -1043,6 +1133,8 @@ async def update_fulfillment_status(
             from_status=previous_status,
             to_status=recorded_status,
             note=body.note,
+            location=body.location,
+            created_at=datetime.now(timezone.utc),
         )
     )
     order = await session.get(CustomerOrder, fulfillment.order_id)

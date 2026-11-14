@@ -4,7 +4,7 @@ from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class CartItemCreate(BaseModel):
@@ -74,6 +74,8 @@ class OrderItemRead(BaseModel):
     quantity: int
     unit_price: Decimal
     line_total: Decimal
+    image_url: str | None = None
+    image_alt: str | None = None
 
 
 class OrderEventRead(BaseModel):
@@ -84,6 +86,19 @@ class OrderEventRead(BaseModel):
     to_status: str
     note: str | None
     created_at: datetime
+    location: str | None = None
+
+
+class DeliveryFeedbackCreate(BaseModel):
+    rating: int = Field(strict=True, ge=1, le=5)
+
+
+class DeliveryFeedbackRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    rating: int
+    created_at: datetime
+    updated_at: datetime
 
 
 class PaymentTransactionRead(BaseModel):
@@ -111,6 +126,12 @@ class FulfillmentOrderRead(BaseModel):
     commission_rate_bps: int
     commission_amount: Decimal
     tracking_number: str | None
+    courier_name: str | None = None
+    support_phone: str | None = None
+    support_email: str | None = None
+    delivery_feedback: DeliveryFeedbackRead | None = None
+    return_deadline: datetime | None = None
+    can_request_return: bool = False
     shipping_address: Mapping[str, str | None]
     created_at: datetime
     updated_at: datetime
@@ -146,6 +167,9 @@ class FulfillmentStatusUpdate(BaseModel):
         "confirmed",
         "processing",
         "shipped",
+        "picked_up",
+        "in_transit",
+        "out_for_delivery",
         "delivered",
         "cancelled",
         "returned",
@@ -154,12 +178,28 @@ class FulfillmentStatusUpdate(BaseModel):
     tracking_number: str | None = Field(default=None, max_length=120)
     cash_collected: bool = False
     note: str | None = Field(default=None, max_length=500)
+    courier_name: str | None = Field(default=None, max_length=120)
+    location: str | None = Field(default=None, max_length=180)
+    support_phone: str | None = Field(
+        default=None, max_length=32, pattern=r"^\+?[0-9][0-9 ()-]{5,30}$"
+    )
+    support_email: EmailStr | None = Field(default=None, max_length=254)
 
-    @field_validator("tracking_number", "note")
+    @field_validator(
+        "tracking_number",
+        "note",
+        "courier_name",
+        "location",
+        "support_phone",
+        "support_email",
+        mode="before",
+    )
     @classmethod
     def trim_optional_text(cls, value: str | None) -> str | None:
         if value is None:
             return None
+        if not isinstance(value, str):
+            raise ValueError("Enter text or null.")
         normalized = value.strip()
         return normalized or None
 

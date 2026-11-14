@@ -3,16 +3,15 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
-import { FulfillmentOrder, requestApi } from '@/lib/api';
+import {
+  FulfillmentOrder,
+  type FulfillmentStatusUpdate,
+  requestApi,
+} from '@/lib/api';
+import FulfillmentTracking from './fulfillment-tracking';
 
 export default function VendorOrders() {
   const [orders, setOrders] = useState<FulfillmentOrder[]>([]);
-  const [trackingNumbers, setTrackingNumbers] = useState<
-    Record<string, string>
-  >({});
-  const [cashCollected, setCashCollected] = useState<Record<string, boolean>>(
-    {},
-  );
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
   const [loading, setLoading] = useState(true);
@@ -45,7 +44,7 @@ export default function VendorOrders() {
   async function updateStatus(
     order: FulfillmentOrder,
     status: string,
-    extra: { tracking_number?: string; cash_collected?: boolean } = {},
+    extra: Omit<FulfillmentStatusUpdate, 'status'> = {},
   ) {
     setError('');
     setBusyId(order.id);
@@ -243,47 +242,8 @@ export default function VendorOrders() {
                       {button(order, 'Cancel order', 'cancelled', {}, true)}
                     </>
                   )}
-                  {order.status === 'processing' && (
-                    <>
-                      <label className="text-sm font-medium text-slate-700">
-                        Tracking number
-                        <input
-                          className="mt-1 block rounded-lg border border-slate-300 px-3 py-2"
-                          onChange={(event) =>
-                            setTrackingNumbers((current) => ({
-                              ...current,
-                              [order.id]: event.target.value,
-                            }))
-                          }
-                          value={trackingNumbers[order.id] ?? ''}
-                        />
-                      </label>
-                      {button(order, 'Mark shipped', 'shipped', {
-                        tracking_number: trackingNumbers[order.id],
-                      })}
-                      {button(order, 'Cancel order', 'cancelled', {}, true)}
-                    </>
-                  )}
-                  {order.status === 'shipped' && (
-                    <>
-                      <label className="flex items-center gap-2 text-sm text-slate-700">
-                        <input
-                          checked={cashCollected[order.id] ?? false}
-                          onChange={(event) =>
-                            setCashCollected((current) => ({
-                              ...current,
-                              [order.id]: event.target.checked,
-                            }))
-                          }
-                          type="checkbox"
-                        />
-                        Cash collected
-                      </label>
-                      {button(order, 'Mark delivered', 'delivered', {
-                        cash_collected: cashCollected[order.id] ?? false,
-                      })}
-                    </>
-                  )}
+                  {order.status === 'processing' &&
+                    button(order, 'Cancel order', 'cancelled', {}, true)}
                   {order.status === 'return_requested' && (
                     <>
                       {button(order, 'Accept return', 'returned')}
@@ -306,7 +266,7 @@ export default function VendorOrders() {
                       Record cash refund
                     </button>
                   )}
-                  {order.status === 'shipped' && order.tracking_number && (
+                  {order.tracking_number && (
                     <p className="text-sm text-slate-600">
                       Tracking:{' '}
                       <span className="font-semibold">
@@ -315,6 +275,14 @@ export default function VendorOrders() {
                     </p>
                   )}
                 </div>
+                <FulfillmentTracking
+                  key={`${order.id}:${order.status}`}
+                  order={order}
+                  busy={busyId === order.id}
+                  onUpdate={({ status, ...extra }) =>
+                    updateStatus(order, status, extra)
+                  }
+                />
                 <ol
                   aria-label="Order status history"
                   className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-slate-100 pt-3"
@@ -326,6 +294,7 @@ export default function VendorOrders() {
                       </span>
                       {' · '}
                       {new Date(event.created_at).toLocaleString()}
+                      {event.location && ` · ${event.location}`}
                     </li>
                   ))}
                 </ol>

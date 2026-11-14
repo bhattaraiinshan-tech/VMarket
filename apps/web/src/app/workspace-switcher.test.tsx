@@ -117,44 +117,49 @@ describe('workspace selection', () => {
     },
   );
 
-  it('keeps workspace and explicit shop controls while the notification shell owns navigation', async () => {
-    navigation.path = '/notifications';
-    installFetch();
-    render(
-      <WorkspaceProvider>
-        <main>Notification center content</main>
-      </WorkspaceProvider>,
-    );
-    expect(
-      await screen.findByText('Notification center content'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('combobox', { name: 'Workspace' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('link', { name: "Vendor's Market" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: /^Notifications,/ }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('navigation', { name: 'customer navigation' }),
-    ).not.toBeInTheDocument();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Workspace' }), {
-      target: { value: 'vendor' },
-    });
-    const shopSelector = await screen.findByRole('combobox', { name: 'Shop' });
-    expect(shopSelector).toHaveValue('');
-    expect(
-      screen.getByRole('button', { name: 'Create shop' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('navigation', { name: 'vendor navigation' }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText('Notification center content'),
-    ).not.toBeInTheDocument();
-  });
+  it.each(['/notifications', '/support'])(
+    'keeps workspace and explicit shop controls while %s owns navigation',
+    async (path) => {
+      navigation.path = path;
+      installFetch();
+      render(
+        <WorkspaceProvider>
+          <main>Notification center content</main>
+        </WorkspaceProvider>,
+      );
+      expect(
+        await screen.findByText('Notification center content'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('combobox', { name: 'Workspace' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('link', { name: "Vendor's Market" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /^Notifications,/ }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('navigation', { name: 'customer navigation' }),
+      ).not.toBeInTheDocument();
+      fireEvent.change(screen.getByRole('combobox', { name: 'Workspace' }), {
+        target: { value: 'vendor' },
+      });
+      const shopSelector = await screen.findByRole('combobox', {
+        name: 'Shop',
+      });
+      expect(shopSelector).toHaveValue('');
+      expect(
+        screen.getByRole('button', { name: 'Create shop' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('navigation', { name: 'vendor navigation' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('Notification center content'),
+      ).not.toBeInTheDocument();
+    },
+  );
 
   it('guards wrong modes, requires explicit shop selection and remounts scoped state', async () => {
     installFetch([

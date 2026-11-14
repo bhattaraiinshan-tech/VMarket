@@ -230,8 +230,14 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       ) && (
         <WorkspaceSwitcher
           key={`${context.user?.id}:${mode}:${context.shopId}`}
-          hideNavigation={path === '/notifications'}
-          hideBrand={path === '/notifications'}
+          hideNavigation={
+            path === '/notifications' ||
+            (path === '/support' && mode !== 'admin')
+          }
+          hideBrand={
+            path === '/notifications' ||
+            (path === '/support' && mode !== 'admin')
+          }
           accountHeader={
             mode === 'customer' &&
             (path === '/' ||

@@ -164,10 +164,10 @@ describe('request states', () => {
     fireEvent.change(screen.getByLabelText('Subject'), {
       target: { value: 'Delivery question' },
     });
-    fireEvent.change(screen.getByLabelText('Details'), {
+    fireEvent.change(screen.getByLabelText('Message', { exact: true }), {
       target: { value: 'Please help.' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Send to support' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Ticket' }));
     await screen.findByText('Your request was sent to the support team.');
     resolveHistory([]);
     expect(await screen.findByText('Delivery question')).toBeInTheDocument();

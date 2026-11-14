@@ -34,6 +34,33 @@ provider supplies a skip-to-content link and keeps protected page content behind
 the existing workspace and shop checks. List screens should distinguish loading
 and failed requests from a successfully loaded empty list.
 
+### Support Center
+
+`/support` uses a responsive, purple-accented dashboard with grouped
+workspace-specific navigation, the shared notification bell, account access,
+three contact-channel cards, searchable FAQs, and a ticket form. The workspace
+and explicit shop selectors remain available above the shell. Admin visits
+still link to the platform moderation queue without fetching personal tickets.
+
+Modules in `src/app/support/`:
+
+- `support-shell.tsx` provides navigation and the header.
+- `support-components.tsx` provides contact cards, the single-open FAQ accordion,
+  ticket form, and request history. Both search inputs filter FAQ questions and
+  answers; accordion buttons expose their expanded state and associated panels.
+- `support-page.tsx` connects the existing support-ticket API, loading/error/retry
+  states, submission feedback, and context-change cancellation.
+
+Order-linked support and disputes, saved ticket history, and administrator
+responses are preserved. Failed submissions retain the draft; switching account,
+workspace, or shop clears scoped drafts and prevents stale responses from
+appearing. Already-sent server mutations cannot be undone by a context change.
+Live chat, platform email, and phone contacts are not verified: their buttons are
+explicitly unavailable and users are directed to the working ticket form.
+No response-time guarantee or average is advertised without confirmed data.
+FAQ guidance describes current commerce features, not the reference mockup's
+job-board workflows.
+
 ### Catalog
 
 `/marketplace` uses a plum-accented catalog shell with category navigation,

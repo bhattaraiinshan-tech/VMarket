@@ -4,6 +4,7 @@ import { FormEvent, useState } from 'react';
 import Link from 'next/link';
 
 import { requestApi } from '@/lib/api';
+import NotificationPopover from '@/components/notifications/notification-popover';
 import { useWorkspace, useWorkspaceShops } from '@/lib/workspace-context';
 import {
   availableWorkspaces,
@@ -14,8 +15,10 @@ import {
 
 export default function WorkspaceSwitcher({
   accountHeader = false,
+  hideNavigation = false,
 }: {
   accountHeader?: boolean;
+  hideNavigation?: boolean;
 }) {
   const { user, workspace, shopId } = useWorkspace();
   const { shops, loading, error: shopError, refresh } = useWorkspaceShops();
@@ -144,25 +147,7 @@ export default function WorkspaceSwitcher({
                 <path d="m3 7 9 6 9-6" />
               </svg>
             </Link>
-            <Link
-              aria-label="Notifications"
-              className="rounded-lg p-2 text-slate-800 hover:bg-teal-50"
-              href="/notifications"
-            >
-              <svg
-                aria-hidden="true"
-                width="21"
-                height="21"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M18 8a6 6 0 0 0-12 0c0 7-2 7-2 9h16c0-2-2-2-2-9M10 21h4" />
-              </svg>
-            </Link>
+            <NotificationPopover />
             <Link
               aria-label="Cart"
               className="rounded-lg p-2 text-slate-800 hover:bg-teal-50"
@@ -271,6 +256,7 @@ export default function WorkspaceSwitcher({
             ))}
           </select>
         </label>
+        {!hideNavigation && <NotificationPopover />}
         {workspace === 'vendor' && (
           <>
             <label className="flex min-w-0 max-w-full items-center gap-2 font-semibold">
@@ -319,16 +305,18 @@ export default function WorkspaceSwitcher({
           </>
         )}
       </div>
-      <nav
-        aria-label={`${workspace ?? 'Account'} navigation`}
-        className="mx-auto mt-3 flex max-w-7xl flex-wrap gap-x-5 gap-y-2"
-      >
-        {links.map(([href, label]) => (
-          <Link key={href} href={href} className="underline">
-            {label}
-          </Link>
-        ))}
-      </nav>
+      {!hideNavigation && (
+        <nav
+          aria-label={`${workspace ?? 'Account'} navigation`}
+          className="mx-auto mt-3 flex max-w-7xl flex-wrap gap-x-5 gap-y-2"
+        >
+          {links.map(([href, label]) => (
+            <Link key={href} href={href} className="underline">
+              {label}
+            </Link>
+          ))}
+        </nav>
+      )}
       {workspace === 'vendor' && (
         <p className="mx-auto mt-3 max-w-7xl font-semibold">
           {shopId

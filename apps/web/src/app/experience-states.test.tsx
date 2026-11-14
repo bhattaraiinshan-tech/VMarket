@@ -38,7 +38,7 @@ describe('request states', () => {
     [
       'notifications',
       <NotificationsPage key="notifications" />,
-      'You have no notifications yet.',
+      "You're all caught up",
     ],
     [
       'messages',
@@ -132,13 +132,12 @@ describe('request states', () => {
     vi.mocked(requestApi).mockResolvedValue([]);
     render(<NotificationsPage />);
     await waitFor(() =>
-      expect(
-        screen.getByText('You have no notifications yet.'),
-      ).toBeInTheDocument(),
+      expect(screen.getByText("You're all caught up")).toBeInTheDocument(),
     );
-    expect(
-      screen.getByRole('link', { name: 'Customer orders' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^Orders$/ })).toHaveAttribute(
+      'href',
+      '/orders',
+    );
     expect(
       screen.queryByRole('link', { name: 'Vendor fulfillment' }),
     ).not.toBeInTheDocument();

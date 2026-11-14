@@ -364,7 +364,7 @@ export type Order = {
 
 export type Notification = {
   id: string;
-  workspace: Workspace;
+  workspace: Workspace | 'account';
   shop_id: string | null;
   order_id: string | null;
   fulfillment_order_id: string | null;

@@ -83,8 +83,8 @@ describe('workspace-specific screens', () => {
       '/messages',
     );
     expect(
-      quickLinks.getByRole('link', { name: 'Notifications' }),
-    ).toHaveAttribute('href', '/notifications');
+      quickLinks.getByRole('button', { name: /^Notifications,/ }),
+    ).toHaveAttribute('aria-expanded', 'false');
     expect(quickLinks.getByRole('link', { name: 'Cart' })).toHaveAttribute(
       'href',
       '/cart',

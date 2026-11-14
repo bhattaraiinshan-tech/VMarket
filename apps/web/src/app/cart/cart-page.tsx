@@ -6,6 +6,7 @@ import { FormEvent, useEffect, useRef, useState } from 'react';
 import { DeliveryAddress, Order, requestApi } from '@/lib/api';
 import { createUuid } from '@/lib/uuid';
 import StoreAccountMenu from '../marketplace/store-account-menu';
+import NotificationPopover from '@/components/notifications/notification-popover';
 import {
   CartItemsHeader,
   CartLineItem,
@@ -36,6 +37,7 @@ function CartHeader({ count }: { count: number | null }) {
             Order history
           </Link>
           <StoreAccountMenu />
+          <NotificationPopover />
           <span aria-current="page" className="py-3 font-semibold">
             Cart{count !== null ? ` (${count})` : ''}
           </span>

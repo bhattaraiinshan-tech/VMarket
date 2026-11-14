@@ -410,6 +410,16 @@ async def test_notification_read_and_list_are_isolated_between_owned_shops_and_m
     _sign_in(client, "vendor1")
     first_inbox = await client.get("/api/v1/me/notifications")
     assert {row["id"] for row in first_inbox.json()} == {first_id, account_id}
+    for action in ("read", "unread", "delete"):
+        for forbidden_id in (second_id, customer_id):
+            rejected = await client.post(
+                "/api/v1/me/notifications/batch",
+                json={"ids": [first_id, forbidden_id], "action": action},
+            )
+            assert rejected.status_code == 404
+    async with factory() as session:
+        unchanged = await session.get(OrderNotification, UUID(first_id))
+        assert unchanged is not None and unchanged.read_at is None
     assert (await client.patch(f"/api/v1/me/notifications/{second_id}/read")).status_code == 404
     client.headers["X-VMarket-Shop-Id"] = sibling_id
     second_inbox = await client.get("/api/v1/me/notifications")
@@ -421,6 +431,119 @@ async def test_notification_read_and_list_are_isolated_between_owned_shops_and_m
     assert {row["id"] for row in personal.json()} == {customer_id, account_id}
     client.headers["X-VMarket-Workspace"] = "vendor"
     assert (await client.get("/api/v1/me/notifications")).status_code == 422
+    assert (
+        await client.post(
+            "/api/v1/me/notifications/batch",
+            json={"ids": [first_id], "action": "read"},
+        )
+    ).status_code == 422
+
+
+@pytest.mark.parametrize("action", ["read", "unread", "delete"])
+async def test_notification_batch_persists_only_selected_rows(
+    orders_client: OrdersClient, action: str
+) -> None:
+    client, factory, ids = orders_client
+    async with factory() as session:
+        notices = [
+            OrderNotification(
+                user_id=ids["customer"],
+                workspace=workspace,
+                title=f"Notice {index}",
+                message="An update.",
+                read_at=datetime.now(timezone.utc) if action == "unread" else None,
+            )
+            for index, workspace in enumerate(("customer", "account", "customer"))
+        ]
+        session.add_all(notices)
+        await session.commit()
+        selected_ids = [str(item.id) for item in notices[:2]]
+        untouched_id = str(notices[2].id)
+    response = await client.post(
+        "/api/v1/me/notifications/batch", json={"ids": selected_ids, "action": action}
+    )
+    assert response.status_code == 200, response.text
+    persisted = {item["id"]: item for item in (await client.get("/api/v1/me/notifications")).json()}
+    assert untouched_id in persisted
+    if action == "delete":
+        assert response.json() == []
+        assert set(persisted) == {untouched_id}
+    else:
+        assert {item["id"] for item in response.json()} == set(selected_ids)
+        assert all(bool(persisted[item]["read_at"]) == (action == "read") for item in selected_ids)
+        assert bool(persisted[untouched_id]["read_at"]) == (action == "unread")
+        repeated = await client.post(
+            "/api/v1/me/notifications/batch", json={"ids": selected_ids, "action": action}
+        )
+        assert repeated.json() == response.json()
+
+
+async def test_notification_batch_rejects_other_accounts_and_invalid_payloads(
+    orders_client: OrdersClient,
+) -> None:
+    client, factory, ids = orders_client
+    async with factory() as session:
+        own = OrderNotification(
+            user_id=ids["customer"], workspace="customer", title="Own", message="Own."
+        )
+        other = OrderNotification(
+            user_id=ids["vendor1"], workspace="account", title="Other", message="Other."
+        )
+        session.add_all([own, other])
+        await session.commit()
+        own_id, other_id = str(own.id), str(other.id)
+    for action in ("read", "unread", "delete"):
+        result = await client.post(
+            "/api/v1/me/notifications/batch",
+            json={"ids": [own_id, other_id], "action": action},
+        )
+        assert result.status_code == 404
+    for body in (
+        {"ids": [], "action": "read"},
+        {"ids": [own_id, own_id], "action": "read"},
+        {"ids": [str(UUID(int=index)) for index in range(1, 102)], "action": "read"},
+        {"ids": ["not-a-uuid"], "action": "read"},
+        {"ids": [own_id], "action": "invalid"},
+        {"ids": [own_id], "action": "read", "workspace": "admin"},
+    ):
+        assert (await client.post("/api/v1/me/notifications/batch", json=body)).status_code == 422
+    async with factory() as session:
+        unchanged = await session.get(OrderNotification, UUID(own_id))
+        assert unchanged is not None and unchanged.read_at is None
+    client.headers.pop("X-VMarket-Workspace")
+    body = {"ids": [own_id], "action": "read"}
+    assert (await client.post("/api/v1/me/notifications/batch", json=body)).status_code == 422
+    client.headers["X-VMarket-Workspace"] = "customer"
+    client.cookies.clear()
+    assert (await client.post("/api/v1/me/notifications/batch", json=body)).status_code == 401
+
+
+async def test_notification_batch_accepts_the_full_inbox_limit(
+    orders_client: OrdersClient,
+) -> None:
+    client, factory, ids = orders_client
+    async with factory() as session:
+        notifications = [
+            OrderNotification(
+                user_id=ids["customer"],
+                workspace="customer",
+                title=f"Notice {index}",
+                message="An update.",
+            )
+            for index in range(100)
+        ]
+        session.add_all(notifications)
+        await session.commit()
+        selected = [str(item.id) for item in notifications]
+    response = await client.post(
+        "/api/v1/me/notifications/batch", json={"ids": selected, "action": "read"}
+    )
+    assert response.status_code == 200
+    assert len(response.json()) == 100
+    assert all(item["read_at"] is not None for item in response.json())
+    persisted = await client.get("/api/v1/me/notifications")
+    assert len(persisted.json()) == 100
+    assert all(item["read_at"] is not None for item in persisted.json())
 
 
 async def _add_cart_item(

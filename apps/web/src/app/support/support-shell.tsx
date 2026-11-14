@@ -47,7 +47,6 @@ export default function SupportShell({
             { label: 'Orders', href: '/vendor/orders', icon: 'orders' },
             { label: 'Wholesale', href: '/vendor/trade', icon: 'stock' },
             { label: 'Promotions', href: '/vendor/promotions', icon: 'offers' },
-            { label: 'Reviews', href: '/vendor/reviews', icon: 'messages' },
           ]
         : [
             { label: 'Marketplace', href: '/marketplace', icon: 'products' },

@@ -110,6 +110,8 @@ describe('workspace-specific screens', () => {
       expect(nav.querySelector('a[href="/vendor/trade"]') !== null).toBe(
         workspace === 'vendor',
       );
+      if (workspace === 'vendor')
+        expect(nav.querySelector('a[href="/vendor/reviews"]')).toBeNull();
       expect(nav.querySelector('a[href="/admin/accounts"]') !== null).toBe(
         workspace === 'admin',
       );

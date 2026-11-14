@@ -164,6 +164,20 @@ class FulfillmentStatusUpdate(BaseModel):
         return normalized or None
 
 
+class NotificationBatchUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ids: list[UUID] = Field(min_length=1, max_length=100)
+    action: Literal["read", "unread", "delete"]
+
+    @field_validator("ids")
+    @classmethod
+    def unique_ids(cls, value: list[UUID]) -> list[UUID]:
+        if len(set(value)) != len(value):
+            raise ValueError("Notification IDs must be unique.")
+        return value
+
+
 class NotificationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

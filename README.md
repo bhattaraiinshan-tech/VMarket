@@ -344,6 +344,33 @@ review reports, pending reviews, support tickets, and disputes at `/admin/commun
 approved vendor application before creating a shop; product submissions remain unpublished until an administrator
 approves them.
 
+The notification center groups the latest 100 notifications by local calendar date, with text search,
+All/Read/Unread filters, a compact bell preview, and selection-based read/unread/delete actions.
+Bulk actions persist through `POST /api/v1/me/notifications/batch` (`ids`, `action`:
+`read`, `unread`, or `delete`); all selected IDs must belong to the authenticated account and
+active workspace/shop, otherwise none are changed. Account-level notices remain visible across workspaces.
+Deletion requires confirmation and only removes inbox notices, not their orders or messages.
+Details retain workspace-aware conversation/order links. Notification type icons are used instead of
+invented sender avatars because the notification API does not provide sender names or photos.
+The page uses `notification-shell`, shared `components/notifications/notification-ui`, and
+`use-notifications` for the dashboard shell, timeline/popovers, and selection/filter state.
+Changing account, workspace, or shop resets page state and discards obsolete requests.
+
+Headers use `components/notifications/notification-popover.tsx`: render `<NotificationPopover />`
+inside any authenticated header (within the workspace shell). It fetches the latest 100 notices,
+shows the newest five (both read and unread) in a scrollable preview, and displays a red unread badge.
+Counts cover that recent inbox, not an unlimited notification history. The `className` prop customizes
+the bell; the optional `inbox` prop accepts the result of `useNotificationInbox()` to share state with
+a parent, as on the notification center. The hook lives in `lib/notification-inbox.ts`.
+It refreshes on mount, bell opening, window focus, and every 60 seconds; successful mutations
+invalidate other mounted previews. Individual clicks persist read status before navigating to the
+workspace-scoped order/conversation; notices without a destination are marked read in place.
+Failed writes keep the preview open and show an error without navigating.
+The popover supports keyboard activation, Escape with focus restoration, outside-pointer/focus dismissal,
+and viewport-constrained positioning. Guests and vendors without an explicitly selected shop do not
+fetch an inbox. Customer account/messages, storefront/product, cart, and standard workspace headers use
+the same component; the notification dashboard shares its existing inbox instead of fetching twice.
+
 Checkout currently supports cash on delivery. Shipping is a fixed NPR 100 per vendor fulfillment, so a multi-vendor
 cart pays one delivery fee per shop. Prices and totals are calculated from server-side catalogue data using decimal
 currency values. Stock is atomically reserved during checkout and returned to availability when a fulfillment is

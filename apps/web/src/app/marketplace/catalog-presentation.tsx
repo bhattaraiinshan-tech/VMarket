@@ -5,6 +5,7 @@ import type { Category, Product } from '@/lib/api';
 import { useWorkspace } from '@/lib/workspace-context';
 import { browserStorageUrl } from '@/lib/network';
 import StoreAccountMenu from './store-account-menu';
+import NotificationPopover from '@/components/notifications/notification-popover';
 import styles from './catalog.module.css';
 
 export function categoryHref(id: string) {
@@ -76,6 +77,7 @@ export function CatalogHeader({
               Discover products
             </a>
             <StoreAccountMenu />
+            {isCustomer && <NotificationPopover />}
             {isCustomer && (
               <button
                 aria-haspopup="dialog"

@@ -5,7 +5,7 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Response
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,6 +40,7 @@ from app.orders.schemas import (
     FulfillmentOrderRead,
     FulfillmentStatusUpdate,
     InvoiceRead,
+    NotificationBatchUpdate,
     NotificationRead,
     OrderEventRead,
     OrderItemRead,
@@ -1164,30 +1165,65 @@ async def record_cash_refund(
     return await _fulfillment_read(session, fulfillment)
 
 
+def _notification_query(context: WorkspaceContext) -> Select[OrderNotification]:
+    if context.workspace == "vendor" and context.shop is None:
+        raise APIError(422, "shop_context_required", "Select a shop to continue.")
+    return select(OrderNotification).where(
+        OrderNotification.user_id == context.user.id,
+        (OrderNotification.workspace == "account")
+        | (
+            (OrderNotification.workspace == context.workspace)
+            & (
+                OrderNotification.shop_id == context.shop.id
+                if context.shop is not None
+                else OrderNotification.shop_id.is_(None)
+            )
+        ),
+    )
+
+
 @router.get("/me/notifications", response_model=list[NotificationRead])
 async def list_notifications(
     context: Annotated[WorkspaceContext, Depends(get_workspace_context)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[NotificationRead]:
-    if context.workspace == "vendor" and context.shop is None:
-        raise APIError(422, "shop_context_required", "Select a shop to continue.")
     notifications = await session.scalars(
-        select(OrderNotification)
-        .where(
-            OrderNotification.user_id == context.user.id,
-            (OrderNotification.workspace == "account")
-            | (
-                (OrderNotification.workspace == context.workspace)
-                & (
-                    OrderNotification.shop_id == context.shop.id
-                    if context.shop is not None
-                    else OrderNotification.shop_id.is_(None)
-                )
-            ),
-        )
+        _notification_query(context)
         .order_by(OrderNotification.created_at.desc())
         .limit(100)
     )
+    return [NotificationRead.model_validate(item) for item in notifications]
+
+
+@router.post("/me/notifications/batch", response_model=list[NotificationRead])
+async def update_notifications(
+    payload: NotificationBatchUpdate,
+    context: Annotated[WorkspaceContext, Depends(get_workspace_context)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[NotificationRead]:
+    notifications = list(
+        await session.scalars(
+            _notification_query(context)
+            .where(OrderNotification.id.in_(payload.ids))
+            .order_by(OrderNotification.id)
+            .with_for_update()
+        )
+    )
+    if len(notifications) != len(payload.ids):
+        raise APIError(404, "notification_not_found", "A selected notification was not found.")
+    now = datetime.now(timezone.utc)
+    for notification in notifications:
+        if payload.action == "delete":
+            await session.delete(notification)
+        else:
+            notification.read_at = (
+                notification.read_at or now if payload.action == "read" else None
+            )
+    await session.commit()
+    if payload.action == "delete":
+        return []
+    for notification in notifications:
+        await session.refresh(notification)
     return [NotificationRead.model_validate(item) for item in notifications]
 
 
@@ -1197,22 +1233,10 @@ async def mark_notification_read(
     context: Annotated[WorkspaceContext, Depends(get_workspace_context)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> NotificationRead:
-    if context.workspace == "vendor" and context.shop is None:
-        raise APIError(422, "shop_context_required", "Select a shop to continue.")
     notification = await session.scalar(
-        select(OrderNotification).where(
-            OrderNotification.id == notification_id,
-            OrderNotification.user_id == context.user.id,
-            (OrderNotification.workspace == "account")
-            | (
-                (OrderNotification.workspace == context.workspace)
-                & (
-                    OrderNotification.shop_id == context.shop.id
-                    if context.shop is not None
-                    else OrderNotification.shop_id.is_(None)
-                )
-            ),
-        )
+        _notification_query(context)
+        .where(OrderNotification.id == notification_id)
+        .with_for_update()
     )
     if notification is None:
         raise APIError(404, "notification_not_found", "The notification was not found.")

@@ -73,6 +73,7 @@ function installFetchMock() {
     .mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith('/me')) return Response.json(testUser);
+      if (url.endsWith('/me/notifications')) return Response.json([]);
       if (url.endsWith('/me/cart'))
         return Response.json({ items: [], item_count: 3, subtotal: '1000' });
       if (url.endsWith('/vendor/shops')) return Response.json([]);

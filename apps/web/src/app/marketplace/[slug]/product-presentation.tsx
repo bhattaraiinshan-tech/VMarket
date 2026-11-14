@@ -6,6 +6,7 @@ import type { Product, ProductVariant } from '@/lib/api';
 import { browserStorageUrl } from '@/lib/network';
 import { useWorkspace } from '@/lib/workspace-context';
 import StoreAccountMenu from '../store-account-menu';
+import NotificationPopover from '@/components/notifications/notification-popover';
 
 export function ProductHeader({
   cartCount,
@@ -34,6 +35,7 @@ export function ProductHeader({
         </Link>
         <div className="col-span-2 flex items-center justify-end gap-6 pb-3 sm:col-span-1 sm:col-start-3 sm:row-start-1 sm:pb-0">
           <StoreAccountMenu />
+          {customer && <NotificationPopover />}
           {customer ? (
             <button
               aria-haspopup="dialog"
